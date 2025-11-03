@@ -291,7 +291,7 @@ def get_minutes(meeting_id):
 
 @app.route("/api/generate_minutes/<string:meeting_id>", methods=["POST"])
 def generate_minutes(meeting_id):
-    """회의록 생성 API - 문단 요약을 기반으로 정식 회의록을 생성하고 DB에 저장합니다."""
+    """회의록 생성 API - 청킹된 문서를 기반으로 정식 회의록을 생성하고 DB에 저장합니다."""
     try:
         # 1. meeting_id로 회의록 내용 조회
         rows = db.get_meeting_by_id(meeting_id)
@@ -303,17 +303,17 @@ def generate_minutes(meeting_id):
         meeting_date = rows[0]['meeting_date']
         transcript_text = " ".join([row['segment'] for row in rows])
 
-        # 3. vector DB에서 문단 요약 내용 가져오기 (summary_index 순서대로)
-        summary_content = vdb_manager.get_summary_by_meeting_id(meeting_id)
+        # 3. vector DB에서 청킹된 문서 가져오기 (chunk_index 순서대로)
+        chunks_content = vdb_manager.get_chunks_by_meeting_id(meeting_id)
 
-        if not summary_content:
+        if not chunks_content:
             return jsonify({
                 "success": False,
-                "error": "먼저 '요약하기' 버튼을 눌러 문단 요약을 생성해주세요."
+                "error": "청킹된 회의 내용을 찾을 수 없습니다. 오디오 파일을 먼저 업로드해주세요."
             }), 400
 
         # 4. stt_manager의 generate_minutes를 이용해 회의록 생성
-        minutes_content = stt_manager.generate_minutes(title, transcript_text, summary_content)
+        minutes_content = stt_manager.generate_minutes(title, transcript_text, chunks_content)
 
         if not minutes_content:
             return jsonify({"success": False, "error": "회의록 생성에 실패했습니다."}), 500

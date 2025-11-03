@@ -467,6 +467,56 @@ class VectorDBManager:
         return results
 
     
+    def get_chunks_by_meeting_id(self, meeting_id: str) -> str:
+        """
+        meeting_id로 청킹된 문서를 chunk_index 순서대로 가져와서 하나의 문자열로 결합합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+
+        Returns:
+            str: chunk_index 순서대로 결합된 전체 청크 텍스트
+                 (청크가 없으면 빈 문자열 반환)
+        """
+        try:
+            # meeting_chunks 컬렉션에서 해당 meeting_id의 모든 청크 조회
+            collection = self.client.get_collection(name=self.COLLECTION_NAMES['chunks'])
+
+            # meeting_id로 필터링하여 모든 항목 가져오기
+            results = collection.get(
+                where={"meeting_id": meeting_id},
+                include=["documents", "metadatas"]
+            )
+
+            if not results or not results.get('documents'):
+                print(f"⚠️ meeting_id '{meeting_id}'에 대한 청크를 찾을 수 없습니다.")
+                return ""
+
+            # documents와 metadatas를 chunk_index 순서로 정렬
+            documents = results['documents']
+            metadatas = results['metadatas']
+
+            # (chunk_index, document) 튜플 리스트 생성 후 정렬
+            indexed_docs = []
+            for doc, meta in zip(documents, metadatas):
+                chunk_index = meta.get('chunk_index', 0)
+                indexed_docs.append((chunk_index, doc))
+
+            # chunk_index 기준으로 정렬
+            indexed_docs.sort(key=lambda x: x[0])
+
+            # 문서들을 순서대로 결합 (각 문서 사이에 줄바꿈 2개 추가)
+            full_chunks = "\n\n".join([doc for _, doc in indexed_docs])
+
+            print(f"✅ meeting_id '{meeting_id}'에 대한 {len(indexed_docs)}개의 청크를 순서대로 가져왔습니다.")
+            return full_chunks
+
+        except Exception as e:
+            print(f"❌ 청크 조회 중 오류 발생: {e}")
+            import traceback
+            traceback.print_exc()
+            return ""
+
     def get_summary_by_meeting_id(self, meeting_id: str) -> str:
         """
         meeting_id로 문단 요약을 summary_index 순서대로 가져와서 하나의 문자열로 결합합니다.

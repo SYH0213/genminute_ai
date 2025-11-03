@@ -78,9 +78,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 displaySummary(data.summary);
                 summaryGenerated = true;
 
-                // 회의록 생성 버튼 활성화
-                updateMinutesTab();
-
                 console.log('✅ 기존 문단 요약을 불러왔습니다.');
             } else {
                 console.log('ℹ️ 문단 요약이 아직 생성되지 않았습니다.');
@@ -102,9 +99,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 displayMinutes(data.minutes);
                 minutesGenerated = true;
 
-                // 회의록 컨테이너를 업데이트 (버튼 숨기기)
                 console.log('✅ 기존 회의록을 불러왔습니다.');
             } else {
+                // 회의록이 없으면 생성 버튼 표시
+                updateMinutesTab();
                 console.log('ℹ️ 회의록이 아직 생성되지 않았습니다.');
             }
         } catch (error) {
@@ -185,6 +183,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     initializeViewer();
 
+    // 회의록 생성 버튼 이벤트 리스너 초기 연결
+    attachMinutesButtonListener();
+
     // 요약하기 버튼 이벤트 리스너
     const summarizeButton = document.getElementById('summarize-button');
     if (summarizeButton) {
@@ -226,9 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
                     displaySummary(data.summary);
                     summaryGenerated = true; // 요약 생성 완료 표시
 
-                    // 회의록 탭에서 회의록 생성 버튼 활성화
-                    updateMinutesTab();
-
                     alert('요약이 성공적으로 생성되었습니다!');
                 } else {
                     summaryContainer.innerHTML = `<div class="summary-error">요약 실패: ${data.error}</div>`;
@@ -267,16 +265,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateMinutesTab() {
         const generateMinutesButton = document.getElementById('generate-minutes-button');
 
-        if (summaryGenerated) {
-            // 요약이 생성되었으면 회의록 생성 버튼 표시
-            minutesContainer.innerHTML = `
-                <p class="minutes-placeholder">회의록 생성 버튼을 눌러 정식 회의록을 작성하세요.</p>
-                <button id="generate-minutes-button" class="btn-primary" style="margin-top: 1rem;">회의록 생성</button>
-            `;
+        // 회의록 생성 버튼 항상 표시 (청킹된 문서 기반으로 생성)
+        minutesContainer.innerHTML = `
+            <p class="minutes-placeholder">회의록 생성 버튼을 눌러 정식 회의록을 작성하세요.</p>
+            <button id="generate-minutes-button" class="btn-primary" style="margin-top: 1rem;">회의록 생성</button>
+        `;
 
-            // 버튼 이벤트 리스너 다시 추가
-            attachMinutesButtonListener();
-        }
+        // 버튼 이벤트 리스너 다시 추가
+        attachMinutesButtonListener();
     }
 
     // 회의록 생성 버튼 이벤트 리스너
@@ -287,11 +283,6 @@ document.addEventListener('DOMContentLoaded', () => {
             generateMinutesButton.addEventListener('click', async () => {
                 if (typeof MEETING_ID === 'undefined' || !MEETING_ID) {
                     alert('회의 ID를 찾을 수 없습니다.');
-                    return;
-                }
-
-                if (!summaryGenerated) {
-                    alert('먼저 "요약하기" 버튼을 눌러 문단 요약을 생성해주세요.');
                     return;
                 }
 
