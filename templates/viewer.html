@@ -1,0 +1,30 @@
+{% extends "layout.html" %}
+
+{% block title %}{{ title or '회의록 뷰어' }}{% endblock %}
+
+{% block content %}
+<main class="content-panel">
+    <div class="viewer-container">
+        <header class="viewer-header">
+            <h1 id="meeting-title">회의록 로딩 중...</h1>
+            <button id="summarize-button" class="btn-secondary">요약하기</button>
+        </header>
+
+        <div class="player-container">
+            <audio id="audio-player" controls></audio>
+        </div>
+
+        <main id="transcript-container" class="transcript-container">
+            <p>데이터를 불러오는 중입니다...</p>
+        </main>
+    </div>
+</main>
+{% endblock %}
+
+{% block scripts %}
+    <!-- meeting_id를 JavaScript로 전달 -->
+    <script>
+        const MEETING_ID = "{{ meeting_id }}";
+    </script>
+    <script src="{{ url_for('static', filename='js/viewer.js') }}"></script>
+{% endblock %}

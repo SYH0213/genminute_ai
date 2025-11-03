@@ -1,0 +1,45 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Minute AI{% endblock %}</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    <div class="app-container">
+        <nav class="main-nav">
+            <div class="nav-logo">Ai:</div>
+            <ul class="nav-menu">
+                <li class="nav-header">Meeting</li>
+                <li class="nav-item active"><a href="{{ url_for('index') }}"><span>&#128190;</span> 미팅업로드</a></li>
+                <li class="nav-item"><a href="{{ url_for('list_notes') }}"><span>&#128214;</span> 모든 노트</a></li>
+                <li class="nav-header">Debug</li>
+                <li class="nav-item"><a href="{{ url_for('retriever_page') }}"><span>&#128269;</span> 리트리버</a></li>
+                <li class="nav-item"><a href="{{ url_for('summary_template_page') }}"><span>&#128221;</span> 요약/템플릿</a></li>
+            </ul>
+        </nav>
+
+        <div class="content-wrapper">
+            {% block content %}{% endblock %}
+        </div>
+
+        <aside class="ai-sidebar" id="ai-sidebar">
+            <div class="ai-sidebar-header">
+                <h3>AI 회의록</h3>
+                <button class="btn-toggle-sidebar" id="toggle-ai-sidebar">&times;</button>
+            </div>
+            <div class="ai-sidebar-content">
+                <div class="ai-placeholder">
+                    <div class="ai-icon">&#129302;</div>
+                    <p>현재 내용만으로 AI요약이 불가능합니다.<br>내용을 조금 더 채워주세요</p>
+                    <button class="btn-primary" disabled>회의록 만들기</button>
+                </div>
+            </div>
+        </aside>
+    </div>
+    <script src="{{ url_for('static', filename='js/script.js') }}"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
