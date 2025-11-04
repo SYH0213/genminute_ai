@@ -6,14 +6,23 @@
 {% block content %}
 <main class="content-panel">
     <div class="viewer-container"> {# viewer-container 스타일 재사용 #}
-        <header class="viewer-header">
+        <header class="viewer-header notes-header">
             <h1>모든 노트</h1>
+            <div class="bulk-actions">
+                <button id="select-all-btn" class="btn-outline" disabled>모두선택</button>
+                <button id="bulk-delete-btn" class="btn-outline" disabled>삭제</button>
+            </div>
         </header>
 
         <div class="notes-list">
             {% if meetings %}
                 {% for meeting in meetings %}
                     <div class="note-item-wrapper">
+                        <input type="checkbox"
+                               class="note-checkbox"
+                               data-meeting-id="{{ meeting.meeting_id }}"
+                               data-title="{{ meeting.title }}"
+                               data-audio-file="{{ meeting.audio_file }}">
                         <a href="{{ url_for('view_meeting', meeting_id=meeting.meeting_id) }}" class="note-item">
                             <div class="note-item-title">{{ meeting.title }}</div>
                             <div class="note-item-date">{{ meeting.date }}</div>
@@ -49,11 +58,61 @@
 </main>
 
 <style>
+/* 헤더 스타일 */
+.notes-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.notes-header h1 {
+    margin: 0;
+}
+
+/* 일괄 작업 버튼 */
+.bulk-actions {
+    display: flex;
+    gap: 0.5rem;
+}
+
+.btn-outline {
+    padding: 0.5rem 1.5rem;
+    background: white;
+    color: #333;
+    border: 2px solid #333;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+}
+
+.btn-outline:not(:disabled):hover {
+    background: #333;
+    color: white;
+}
+
+.btn-outline:disabled {
+    border-color: #ccc;
+    color: #ccc;
+    cursor: not-allowed;
+}
+
+/* 노트 아이템 래퍼 */
 .note-item-wrapper {
     position: relative;
     display: flex;
     align-items: center;
+    gap: 1rem;
     margin-bottom: 1rem;
+}
+
+/* 체크박스 스타일 */
+.note-checkbox {
+    width: 24px;
+    height: 24px;
+    cursor: pointer;
+    flex-shrink: 0;
+    margin-left: 0.5rem;
 }
 
 .note-item {
@@ -154,6 +213,70 @@
 <script>
 let currentDeleteData = null;
 
+// === 체크박스 및 일괄 작업 관리 ===
+const checkboxes = document.querySelectorAll('.note-checkbox');
+const selectAllBtn = document.getElementById('select-all-btn');
+const bulkDeleteBtn = document.getElementById('bulk-delete-btn');
+
+// 체크박스 상태 변경 시 버튼 활성화/비활성화
+function updateBulkActionButtons() {
+    const checkedBoxes = document.querySelectorAll('.note-checkbox:checked');
+    const allChecked = checkboxes.length > 0 && checkedBoxes.length === checkboxes.length;
+
+    // 하나라도 체크되면 버튼 활성화
+    if (checkedBoxes.length > 0) {
+        selectAllBtn.disabled = false;
+        bulkDeleteBtn.disabled = false;
+    } else {
+        selectAllBtn.disabled = true;
+        bulkDeleteBtn.disabled = true;
+    }
+
+    // "모두선택" 버튼 텍스트 변경
+    if (allChecked) {
+        selectAllBtn.textContent = '선택해제';
+    } else {
+        selectAllBtn.textContent = '모두선택';
+    }
+}
+
+// 체크박스 클릭 이벤트
+checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateBulkActionButtons);
+});
+
+// "모두선택" 버튼 클릭
+if (selectAllBtn) {
+    selectAllBtn.addEventListener('click', () => {
+        const allChecked = document.querySelectorAll('.note-checkbox:checked').length === checkboxes.length;
+
+        checkboxes.forEach(checkbox => {
+            checkbox.checked = !allChecked;
+        });
+
+        updateBulkActionButtons();
+    });
+}
+
+// "삭제" 버튼 클릭 (일괄 삭제 모달 표시)
+if (bulkDeleteBtn) {
+    bulkDeleteBtn.addEventListener('click', () => {
+        const checkedBoxes = document.querySelectorAll('.note-checkbox:checked');
+
+        if (checkedBoxes.length === 0) return;
+
+        const modal = document.getElementById('delete-modal');
+        const message = document.getElementById('delete-message');
+
+        message.textContent = `선택한 ${checkedBoxes.length}개의 노트를 정말로 삭제하시겠습니까?`;
+        modal.style.display = 'flex';
+
+        // 일괄 삭제 모드 플래그
+        currentDeleteData = { bulkDelete: true };
+    });
+}
+
+// 개별 삭제
 function confirmDelete(event, button) {
     event.preventDefault();
     event.stopPropagation();
@@ -162,7 +285,7 @@ function confirmDelete(event, button) {
     const title = button.dataset.title;
     const audioFile = button.dataset.audioFile;
 
-    currentDeleteData = { meetingId, title, audioFile };
+    currentDeleteData = { meetingId, title, audioFile, bulkDelete: false };
 
     const modal = document.getElementById('delete-modal');
     const message = document.getElementById('delete-message');
@@ -173,34 +296,92 @@ function confirmDelete(event, button) {
 document.getElementById('confirm-delete-btn').addEventListener('click', async () => {
     if (!currentDeleteData) return;
 
-    const { meetingId, audioFile } = currentDeleteData;
+    // 일괄 삭제인 경우
+    if (currentDeleteData.bulkDelete) {
+        const checkedBoxes = document.querySelectorAll('.note-checkbox:checked');
+        const totalCount = checkedBoxes.length;
+        let successCount = 0;
+        let failCount = 0;
 
-    try {
-        // 삭제 요청
-        const response = await fetch(`/api/delete_meeting/${meetingId}`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                audio_file: audioFile
-            })
-        });
-
-        const data = await response.json();
-
-        if (data.success) {
-            alert('노트가 성공적으로 삭제되었습니다.');
-            // 페이지 새로고침
-            window.location.reload();
-        } else {
-            alert(`삭제 실패: ${data.error}`);
-        }
-    } catch (error) {
-        console.error('삭제 요청 중 오류:', error);
-        alert('삭제 요청 중 오류가 발생했습니다.');
-    } finally {
         closeModal();
+
+        // 진행 상황 표시 (간단한 alert로 시작)
+        const progressMsg = `${totalCount}개의 노트를 삭제하는 중...`;
+        console.log(progressMsg);
+
+        // 순차적으로 삭제
+        for (let i = 0; i < checkedBoxes.length; i++) {
+            const checkbox = checkedBoxes[i];
+            const meetingId = checkbox.dataset.meetingId;
+            const audioFile = checkbox.dataset.audioFile;
+
+            try {
+                const response = await fetch(`/api/delete_meeting/${meetingId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        audio_file: audioFile
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    successCount++;
+                    console.log(`✅ ${i + 1}/${totalCount} 삭제 완료`);
+                } else {
+                    failCount++;
+                    console.error(`❌ ${i + 1}/${totalCount} 삭제 실패: ${data.error}`);
+                }
+            } catch (error) {
+                failCount++;
+                console.error(`❌ ${i + 1}/${totalCount} 요청 오류:`, error);
+            }
+        }
+
+        // 결과 알림
+        if (failCount === 0) {
+            alert(`${successCount}개의 노트가 성공적으로 삭제되었습니다.`);
+        } else {
+            alert(`${successCount}개 성공, ${failCount}개 실패`);
+        }
+
+        // 페이지 새로고침
+        window.location.reload();
+
+    } else {
+        // 개별 삭제
+        const { meetingId, audioFile } = currentDeleteData;
+
+        try {
+            // 삭제 요청
+            const response = await fetch(`/api/delete_meeting/${meetingId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    audio_file: audioFile
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                alert('노트가 성공적으로 삭제되었습니다.');
+                // 페이지 새로고침
+                window.location.reload();
+            } else {
+                alert(`삭제 실패: ${data.error}`);
+            }
+        } catch (error) {
+            console.error('삭제 요청 중 오류:', error);
+            alert('삭제 요청 중 오류가 발생했습니다.');
+        } finally {
+            closeModal();
+        }
     }
 });
 

@@ -208,27 +208,77 @@ class DatabaseManager:
             meeting_id (str): 삭제할 회의 ID
 
         Returns:
-            dict: 삭제된 항목 수 정보 {"dialogues": int, "minutes": int}
+            dict: 삭제 전후 항목 수 정보
         """
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        # 1. meeting_dialogues에서 삭제
+        print(f"\n📊 [SQLite DB 삭제 검증 시작] meeting_id = {meeting_id}")
+        print("=" * 70)
+
+        # 1. meeting_dialogues 삭제 전 개수 확인
+        cursor.execute("SELECT COUNT(*) as count FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
+        before_dialogues = cursor.fetchone()['count']
+        print(f"[삭제 전] meeting_dialogues: {before_dialogues}개")
+
+        # 2. meeting_minutes 삭제 전 개수 확인
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
+        before_minutes = 0
+        if cursor.fetchone():
+            cursor.execute("SELECT COUNT(*) as count FROM meeting_minutes WHERE meeting_id = ?", (meeting_id,))
+            before_minutes = cursor.fetchone()['count']
+            print(f"[삭제 전] meeting_minutes: {before_minutes}개")
+        else:
+            print(f"[삭제 전] meeting_minutes: 테이블 없음")
+
+        print("-" * 70)
+
+        # 3. meeting_dialogues에서 삭제 수행
         cursor.execute("DELETE FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
         deleted_dialogues = cursor.rowcount
 
-        # 2. meeting_minutes에서 삭제 (테이블이 존재하는 경우)
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
+        # 4. meeting_minutes에서 삭제 수행
         deleted_minutes = 0
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
         if cursor.fetchone():
             cursor.execute("DELETE FROM meeting_minutes WHERE meeting_id = ?", (meeting_id,))
             deleted_minutes = cursor.rowcount
 
         conn.commit()
+
+        print(f"[삭제 수행] meeting_dialogues: {deleted_dialogues}개 삭제")
+        print(f"[삭제 수행] meeting_minutes: {deleted_minutes}개 삭제")
+
+        print("-" * 70)
+
+        # 5. 삭제 후 검증
+        cursor.execute("SELECT COUNT(*) as count FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
+        after_dialogues = cursor.fetchone()['count']
+        print(f"[삭제 후] meeting_dialogues: {after_dialogues}개 남음")
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
+        after_minutes = 0
+        if cursor.fetchone():
+            cursor.execute("SELECT COUNT(*) as count FROM meeting_minutes WHERE meeting_id = ?", (meeting_id,))
+            after_minutes = cursor.fetchone()['count']
+            print(f"[삭제 후] meeting_minutes: {after_minutes}개 남음")
+
         conn.close()
 
-        print(f"✅ SQLite DB 삭제 완료: dialogues={deleted_dialogues}개, minutes={deleted_minutes}개")
-        return {"dialogues": deleted_dialogues, "minutes": deleted_minutes}
+        # 검증 결과
+        if after_dialogues == 0 and after_minutes == 0:
+            print(f"✅ SQLite DB 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
+        else:
+            print(f"⚠️ SQLite DB 삭제 검증 실패: 일부 데이터가 남아있습니다!")
+
+        print("=" * 70)
+
+        return {
+            "dialogues": deleted_dialogues,
+            "minutes": deleted_minutes,
+            "before": {"dialogues": before_dialogues, "minutes": before_minutes},
+            "after": {"dialogues": after_dialogues, "minutes": after_minutes}
+        }
 
     def get_audio_file_by_meeting_id(self, meeting_id):
         """

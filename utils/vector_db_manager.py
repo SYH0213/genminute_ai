@@ -626,78 +626,161 @@ class VectorDBManager:
         if not self.db_manager:
             raise ValueError("DatabaseManager instance is required for deleting all meeting data. Please set db_manager in VectorDBManager constructor.")
 
+        # 삭제 프로세스 시작 로그
+        print("\n\n" + "=" * 70)
+        print(f"🗑️  [회의 데이터 삭제 프로세스 시작]")
+        print("=" * 70)
+        print(f"🔑 삭제 키값(meeting_id): {meeting_id}")
+        print(f"📍 이 키값을 기준으로 다음 데이터를 검색하여 삭제합니다:")
+        print(f"   • SQLite DB - meeting_dialogues 테이블 (WHERE meeting_id = '{meeting_id}')")
+        print(f"   • SQLite DB - meeting_minutes 테이블 (WHERE meeting_id = '{meeting_id}')")
+        print(f"   • Vector DB - meeting_chunk 컬렉션 (WHERE meeting_id = '{meeting_id}')")
+        print(f"   • Vector DB - meeting_subtopic 컬렉션 (WHERE meeting_id = '{meeting_id}')")
+        print(f"   • 오디오 파일 (uploads 폴더)")
+        print("=" * 70)
+
         # 1. meeting_id로 오디오 파일명 조회
         audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
 
         if not audio_file:
             raise ValueError(f"meeting_id '{meeting_id}'에 해당하는 회의를 찾을 수 없습니다.")
 
+        print(f"📄 오디오 파일명: {audio_file}")
+        print("=" * 70)
+
         # 2. SQLite DB 삭제
         deleted_sqlite = self.db_manager.delete_meeting_by_id(meeting_id)
 
         # 3. Vector DB chunks 삭제
         deleted_chunks_count = 0
+        before_chunks_count = 0
+        after_chunks_count = 0
         try:
+            print(f"\n📊 [Vector DB Chunks 삭제 검증 시작] meeting_id = {meeting_id}")
+            print("=" * 70)
+
             # LangChain vectorstore의 underlying collection 사용
             chunks_collection = self.vectorstores['chunks']._collection
 
-            # 삭제 전 데이터 확인
-            before_delete = chunks_collection.get(where={"meeting_id": meeting_id}, limit=1)
+            # 삭제 전 전체 데이터 개수 확인 (limit 없이 조회)
+            before_delete = chunks_collection.get(where={"meeting_id": meeting_id})
             if before_delete and before_delete.get('ids'):
-                print(f"🔍 삭제 대상 발견: meeting_id={meeting_id} (chunks)")
+                before_chunks_count = len(before_delete['ids'])
+                print(f"[삭제 전] meeting_chunk: {before_chunks_count}개")
+                print("-" * 70)
+
                 # 삭제 실행
                 chunks_collection.delete(where={"meeting_id": meeting_id})
+                print(f"[삭제 수행] meeting_chunk: {before_chunks_count}개 삭제 시도")
+                deleted_chunks_count = before_chunks_count
+
+                print("-" * 70)
 
                 # 삭제 후 확인
-                after_delete = chunks_collection.get(where={"meeting_id": meeting_id}, limit=1)
-                if not after_delete.get('ids'):
-                    print(f"✅ Vector DB (meeting_chunks) 삭제 완료")
-                    deleted_chunks_count = len(before_delete['ids'])
+                after_delete = chunks_collection.get(where={"meeting_id": meeting_id})
+                if after_delete and after_delete.get('ids'):
+                    after_chunks_count = len(after_delete['ids'])
+                    print(f"[삭제 후] meeting_chunk: {after_chunks_count}개 남음")
+                    print(f"⚠️ Vector DB (meeting_chunk) 삭제 검증 실패: {after_chunks_count}개 데이터가 남아있음")
                 else:
-                    print(f"⚠️ Vector DB (meeting_chunks) 삭제 실패: 일부 데이터가 남아있음")
+                    print(f"[삭제 후] meeting_chunk: 0개 남음")
+                    print(f"✅ Vector DB (meeting_chunk) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
             else:
-                print(f"ℹ️ Vector DB (meeting_chunks)에 meeting_id={meeting_id} 데이터 없음")
+                print(f"[삭제 전] meeting_chunk: 0개")
+                print(f"ℹ️ Vector DB (meeting_chunk)에 meeting_id={meeting_id} 데이터 없음")
+
+            print("=" * 70)
+
         except Exception as e:
-            print(f"⚠️ Vector DB (meeting_chunks) 삭제 중 오류: {e}")
+            print(f"❌ Vector DB (meeting_chunk) 삭제 중 오류: {e}")
             import traceback
             traceback.print_exc()
 
         # 4. Vector DB subtopic 삭제
         deleted_subtopic_count = 0
+        before_subtopic_count = 0
+        after_subtopic_count = 0
         try:
+            print(f"\n📊 [Vector DB Subtopic 삭제 검증 시작] meeting_id = {meeting_id}")
+            print("=" * 70)
+
             # LangChain vectorstore의 underlying collection 사용
             subtopic_collection = self.vectorstores['subtopic']._collection
 
-            # 삭제 전 데이터 확인
-            before_delete = subtopic_collection.get(where={"meeting_id": meeting_id}, limit=1)
+            # 삭제 전 전체 데이터 개수 확인 (limit 없이 조회)
+            before_delete = subtopic_collection.get(where={"meeting_id": meeting_id})
             if before_delete and before_delete.get('ids'):
-                print(f"🔍 삭제 대상 발견: meeting_id={meeting_id} (subtopic)")
+                before_subtopic_count = len(before_delete['ids'])
+                print(f"[삭제 전] meeting_subtopic: {before_subtopic_count}개")
+                print("-" * 70)
+
                 # 삭제 실행
                 subtopic_collection.delete(where={"meeting_id": meeting_id})
+                print(f"[삭제 수행] meeting_subtopic: {before_subtopic_count}개 삭제 시도")
+                deleted_subtopic_count = before_subtopic_count
+
+                print("-" * 70)
 
                 # 삭제 후 확인
-                after_delete = subtopic_collection.get(where={"meeting_id": meeting_id}, limit=1)
-                if not after_delete.get('ids'):
-                    print(f"✅ Vector DB (meeting_subtopic) 삭제 완료")
-                    deleted_subtopic_count = len(before_delete['ids'])
+                after_delete = subtopic_collection.get(where={"meeting_id": meeting_id})
+                if after_delete and after_delete.get('ids'):
+                    after_subtopic_count = len(after_delete['ids'])
+                    print(f"[삭제 후] meeting_subtopic: {after_subtopic_count}개 남음")
+                    print(f"⚠️ Vector DB (meeting_subtopic) 삭제 검증 실패: {after_subtopic_count}개 데이터가 남아있음")
                 else:
-                    print(f"⚠️ Vector DB (meeting_subtopic) 삭제 실패: 일부 데이터가 남아있음")
+                    print(f"[삭제 후] meeting_subtopic: 0개 남음")
+                    print(f"✅ Vector DB (meeting_subtopic) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
             else:
+                print(f"[삭제 전] meeting_subtopic: 0개")
                 print(f"ℹ️ Vector DB (meeting_subtopic)에 meeting_id={meeting_id} 데이터 없음")
+
+            print("=" * 70)
+
         except Exception as e:
-            print(f"⚠️ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
+            print(f"❌ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
             import traceback
             traceback.print_exc()
 
         # 5. 오디오 파일 삭제
+        print(f"\n📊 [오디오 파일 삭제 검증 시작] meeting_id = {meeting_id}")
+        print("=" * 70)
+
         audio_path = os.path.join(self.upload_folder, audio_file)
         audio_deleted = False
+
         if os.path.exists(audio_path):
+            print(f"[삭제 전] 오디오 파일 존재: {audio_file}")
+            print(f"           경로: {audio_path}")
+            print("-" * 70)
+
             os.remove(audio_path)
-            print(f"✅ 오디오 파일 삭제 완료: {audio_file}")
-            audio_deleted = True
+            print(f"[삭제 수행] 오디오 파일 삭제 시도: {audio_file}")
+
+            print("-" * 70)
+
+            if not os.path.exists(audio_path):
+                print(f"[삭제 후] 오디오 파일 없음")
+                print(f"✅ 오디오 파일 삭제 검증 성공: 파일이 삭제되었습니다.")
+                audio_deleted = True
+            else:
+                print(f"[삭제 후] 오디오 파일 여전히 존재")
+                print(f"⚠️ 오디오 파일 삭제 검증 실패: 파일이 남아있습니다.")
         else:
-            print(f"⚠️ 오디오 파일을 찾을 수 없음: {audio_file}")
+            print(f"[삭제 전] 오디오 파일 없음: {audio_file}")
+            print(f"ℹ️ 오디오 파일이 존재하지 않습니다.")
+
+        print("=" * 70)
+
+        # 최종 요약
+        print(f"\n{'=' * 70}")
+        print(f"🎉 [삭제 작업 최종 요약] meeting_id = {meeting_id}")
+        print("=" * 70)
+        print(f"✓ SQLite meeting_dialogues: {deleted_sqlite['dialogues']}개 삭제")
+        print(f"✓ SQLite meeting_minutes: {deleted_sqlite['minutes']}개 삭제")
+        print(f"✓ Vector DB meeting_chunk: {deleted_chunks_count}개 삭제")
+        print(f"✓ Vector DB meeting_subtopic: {deleted_subtopic_count}개 삭제")
+        print(f"✓ 오디오 파일: {'삭제됨' if audio_deleted else '없음/실패'}")
+        print("=" * 70 + "\n")
 
         return {
             "success": True,
