@@ -30,6 +30,9 @@ os.makedirs(app.config["UPLOAD_FOLDER"], exist_ok=True)
 db = DatabaseManager(DB_PATH)
 stt_manager = STTManager()
 
+# VectorDBManager에 DatabaseManager 인스턴스 주입
+vdb_manager.db_manager = db
+
 # --- 유틸리티 함수 ---
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -341,53 +344,13 @@ def delete_meeting(meeting_id):
     - 오디오 파일
     """
     try:
-        # 1. meeting_id로 오디오 파일명 조회
-        audio_file = db.get_audio_file_by_meeting_id(meeting_id)
+        # VectorDBManager의 delete_from_collection(db_type="all")로 모든 데이터 삭제
+        result = vdb_manager.delete_from_collection(db_type="all", meeting_id=meeting_id)
+        return jsonify(result)
 
-        if not audio_file:
-            return jsonify({"success": False, "error": "해당 회의를 찾을 수 없습니다."}), 404
-
-        # 2. SQLite DB에서 삭제
-        deleted_sqlite = db.delete_meeting_by_id(meeting_id)
-
-        # 3. Vector DB에서 삭제 (meeting_chunk)
-        try:
-            vdb_manager.delete_from_collection(
-                db_type="chunk",
-                meeting_id=meeting_id
-            )
-            print(f"✅ Vector DB (meeting_chunk) 삭제 완료")
-        except Exception as e:
-            print(f"⚠️ Vector DB (meeting_chunk) 삭제 중 오류: {e}")
-
-        # 4. Vector DB에서 삭제 (meeting_subtopic)
-        try:
-            vdb_manager.delete_from_collection(
-                db_type="subtopic",
-                meeting_id=meeting_id
-            )
-            print(f"✅ Vector DB (meeting_subtopic) 삭제 완료")
-        except Exception as e:
-            print(f"⚠️ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
-
-        # 5. 오디오 파일 삭제
-        audio_path = os.path.join(app.config["UPLOAD_FOLDER"], audio_file)
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
-            print(f"✅ 오디오 파일 삭제 완료: {audio_file}")
-        else:
-            print(f"⚠️ 오디오 파일을 찾을 수 없음: {audio_file}")
-
-        return jsonify({
-            "success": True,
-            "message": "회의 데이터가 성공적으로 삭제되었습니다.",
-            "deleted": {
-                "sqlite_dialogues": deleted_sqlite["dialogues"],
-                "sqlite_minutes": deleted_sqlite["minutes"],
-                "audio_file": audio_file
-            }
-        })
-
+    except ValueError as e:
+        # meeting_id를 찾을 수 없는 경우
+        return jsonify({"success": False, "error": str(e)}), 404
     except Exception as e:
         import traceback
         traceback.print_exc()

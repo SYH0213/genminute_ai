@@ -26,12 +26,16 @@ class VectorDBManager:
         'subtopic': 'meeting_subtopic',
     }
 
-    def __init__(self, persist_directory="./database/vector_db"):
+    def __init__(self, persist_directory="./database/vector_db", upload_folder="./uploads", db_manager=None):
         if not os.getenv("OPENAI_API_KEY"):
             raise ValueError("OPENAI_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
         self.client = chromadb.PersistentClient(path=persist_directory)
         self.embedding_function = OpenAIEmbeddings()
+        self.upload_folder = upload_folder
+
+        # DatabaseManager 인스턴스 (외부에서 주입받음, SQLite 삭제를 위해)
+        self.db_manager = db_manager
 
         # Initialize LLM for SelfQueryRetriever
         self.llm = ChatOpenAI(api_key=os.getenv("OPENAI_API_KEY"), temperature=0)
@@ -570,9 +574,17 @@ class VectorDBManager:
     def delete_from_collection(self, db_type, meeting_id=None, audio_file=None, title=None):
         """
         지정된 벡터 DB 컬렉션에서 항목을 삭제합니다.
+        db_type이 "all"이면 SQLite, Vector DB (chunks + subtopic), 오디오 파일을 모두 삭제합니다.
         meeting_id, audio_file, title 중 하나 이상이 제공되면 해당 조건에 맞는 항목을 삭제합니다.
         아무것도 제공되지 않으면 해당 db_type의 전체 컬렉션을 삭제합니다.
         """
+        # db_type이 "all"이면 모든 데이터 삭제 (SQLite + Vector DB + 오디오 파일)
+        if db_type == "all":
+            if not meeting_id:
+                raise ValueError("meeting_id is required when db_type is 'all'")
+            return self._delete_all_meeting_data(meeting_id)
+
+        # 기존 로직: 특정 컬렉션만 삭제
         if db_type not in self.vectorstores:
             raise ValueError(f"Unknown db_type: {db_type}. Must be one of {list(self.COLLECTION_NAMES.keys())}")
 
@@ -597,9 +609,70 @@ class VectorDBManager:
             collection.delete(where={}) # deletes all items
             print(f"✅ All items deleted from '{db_type}' collection.")
 
+    def _delete_all_meeting_data(self, meeting_id):
+        """
+        meeting_id로 모든 회의 데이터를 삭제합니다.
+        - SQLite DB: meeting_dialogues, meeting_minutes
+        - Vector DB: meeting_chunks, meeting_subtopic
+        - 오디오 파일
+
+        Args:
+            meeting_id (str): 삭제할 회의 ID
+
+        Returns:
+            dict: 삭제 결과 정보
+        """
+        # db_manager가 주입되지 않은 경우 에러 발생
+        if not self.db_manager:
+            raise ValueError("DatabaseManager instance is required for deleting all meeting data. Please set db_manager in VectorDBManager constructor.")
+
+        # 1. meeting_id로 오디오 파일명 조회
+        audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
+
+        if not audio_file:
+            raise ValueError(f"meeting_id '{meeting_id}'에 해당하는 회의를 찾을 수 없습니다.")
+
+        # 2. SQLite DB 삭제
+        deleted_sqlite = self.db_manager.delete_meeting_by_id(meeting_id)
+
+        # 3. Vector DB chunks 삭제
+        try:
+            chunks_collection = self.client.get_or_create_collection(name=self.COLLECTION_NAMES['chunks'])
+            chunks_collection.delete(where={"meeting_id": meeting_id})
+            print(f"✅ Vector DB (meeting_chunks) 삭제 완료")
+        except Exception as e:
+            print(f"⚠️ Vector DB (meeting_chunks) 삭제 중 오류: {e}")
+
+        # 4. Vector DB subtopic 삭제
+        try:
+            subtopic_collection = self.client.get_or_create_collection(name=self.COLLECTION_NAMES['subtopic'])
+            subtopic_collection.delete(where={"meeting_id": meeting_id})
+            print(f"✅ Vector DB (meeting_subtopic) 삭제 완료")
+        except Exception as e:
+            print(f"⚠️ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
+
+        # 5. 오디오 파일 삭제
+        audio_path = os.path.join(self.upload_folder, audio_file)
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+            print(f"✅ 오디오 파일 삭제 완료: {audio_file}")
+        else:
+            print(f"⚠️ 오디오 파일을 찾을 수 없음: {audio_file}")
+
+        return {
+            "success": True,
+            "message": "회의 데이터가 성공적으로 삭제되었습니다.",
+            "deleted": {
+                "sqlite_dialogues": deleted_sqlite["dialogues"],
+                "sqlite_minutes": deleted_sqlite["minutes"],
+                "audio_file": audio_file
+            }
+        }
+
 
 
 # --- 싱글톤 인스턴스 생성 ---
 # DB 파일은 minute_ai/database/vector_db 경로에 저장됩니다.
 # vector_db_path = os.path.join(os.path.dirname(__file__), '..', 'database', 'vector_db')
-vdb_manager = VectorDBManager()
+upload_folder_path = os.path.join(os.path.dirname(__file__), '..', 'uploads')
+vdb_manager = VectorDBManager(upload_folder=upload_folder_path)
