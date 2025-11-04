@@ -11,6 +11,7 @@ from utils.stt import STTManager
 from utils.db_manager import DatabaseManager
 from utils.vector_db_manager import vdb_manager
 from utils.validation import validate_title, parse_meeting_date
+from utils.chat_manager import ChatManager
 
 # --- 기본 설정 및 초기화 ---
 app = Flask(__name__)
@@ -32,6 +33,9 @@ stt_manager = STTManager()
 
 # VectorDBManager에 DatabaseManager 인스턴스 주입
 vdb_manager.db_manager = db
+
+# ChatManager 초기화
+chat_manager = ChatManager(vdb_manager)
 
 # --- 유틸리티 함수 ---
 def allowed_file(filename):
@@ -380,6 +384,41 @@ def delete_meeting(meeting_id):
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": f"삭제 중 오류 발생: {str(e)}"}), 500
+
+@app.route("/api/chat", methods=["POST"])
+def chat():
+    """
+    챗봇 API 엔드포인트
+    사용자 질문을 받아 회의록 기반으로 답변을 생성합니다.
+    """
+    try:
+        # 요청 데이터 가져오기
+        data = request.get_json()
+
+        if not data:
+            return jsonify({"success": False, "error": "요청 데이터가 없습니다."}), 400
+
+        query = data.get("query", "").strip()
+        meeting_id = data.get("meeting_id")  # 선택적
+
+        if not query:
+            return jsonify({"success": False, "error": "질문을 입력해주세요."}), 400
+
+        # ChatManager를 통해 질의 처리
+        result = chat_manager.process_query(query, meeting_id)
+
+        if result["success"]:
+            return jsonify(result), 200
+        else:
+            return jsonify(result), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({
+            "success": False,
+            "error": f"챗봇 처리 중 오류가 발생했습니다: {str(e)}"
+        }), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050, debug=True)

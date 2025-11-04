@@ -8,6 +8,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatbotMessages = document.getElementById('chatbot-messages');
     const appContainer = document.querySelector('.app-container');
 
+    // --- 챗봇 대화 내역 관리 (sessionStorage) ---
+    const CHAT_HISTORY_KEY = 'chatbot_history';
+
+    // 페이지 로드 시 대화 내역 불러오기
+    loadChatHistory();
+
     // 드래그 앤 드롭 관련 변수
     let isDragging = false;
     let dragStartX = 0;
@@ -144,7 +150,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // 메시지 전송 함수
-    function sendChatMessage() {
+    async function sendChatMessage() {
         const message = chatbotInput.value.trim();
         if (!message) return;
 
@@ -152,15 +158,130 @@ document.addEventListener('DOMContentLoaded', () => {
         addChatMessage('user', message);
         chatbotInput.value = '';
 
-        // TODO: 여기에 API 호출 로직 추가 예정
-        // 임시로 응답 메시지 표시
-        setTimeout(() => {
-            addChatMessage('assistant', '챗봇 API 연동이 아직 구현되지 않았습니다. 곧 추가될 예정입니다.');
-        }, 500);
+        // 로딩 메시지 표시 (저장하지 않음)
+        const loadingMsg = addChatMessage('assistant', '답변을 생성하고 있습니다...', false, false);
+        loadingMsg.classList.add('loading');
+
+        try {
+            // API 호출
+            const response = await fetch('/api/chat', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    query: message,
+                    // meeting_id: null  // 특정 회의로 제한하려면 여기에 meeting_id 전달
+                })
+            });
+
+            const data = await response.json();
+
+            // 로딩 메시지 제거
+            loadingMsg.remove();
+
+            if (data.success) {
+                // 답변 표시
+                addChatMessage('assistant', data.answer);
+
+                // 출처 정보가 있으면 표시 (선택적)
+                if (data.sources && data.sources.length > 0) {
+                    const sourcesText = formatSources(data.sources);
+                    addChatMessage('assistant', sourcesText, true); // 작은 글씨로 표시
+                }
+            } else {
+                addChatMessage('assistant', `오류: ${data.error || '알 수 없는 오류가 발생했습니다.'}`);
+            }
+        } catch (error) {
+            console.error('챗봇 API 호출 오류:', error);
+            loadingMsg.remove();
+            addChatMessage('assistant', '죄송합니다. 서버와 통신 중 오류가 발생했습니다. 다시 시도해 주세요.');
+        }
+    }
+
+    // 출처 정보 포맷팅
+    function formatSources(sources) {
+        if (!sources || sources.length === 0) return '';
+
+        const uniqueMeetings = new Set();
+        sources.forEach(source => {
+            if (source.title) {
+                uniqueMeetings.add(`"${source.title}" (${source.meeting_date})`);
+            }
+        });
+
+        if (uniqueMeetings.size === 0) return '';
+
+        return `📌 출처: ${Array.from(uniqueMeetings).join(', ')}`;
+    }
+
+    // sessionStorage에서 대화 내역 불러오기
+    function loadChatHistory() {
+        try {
+            const historyJson = sessionStorage.getItem(CHAT_HISTORY_KEY);
+            if (!historyJson) return; // 저장된 내역이 없으면 종료
+
+            const history = JSON.parse(historyJson);
+            if (!history.messages || history.messages.length === 0) return;
+
+            // 환영 메시지 제거
+            const welcome = chatbotMessages.querySelector('.chatbot-welcome');
+            if (welcome) {
+                welcome.remove();
+            }
+
+            // 저장된 메시지들을 화면에 표시
+            history.messages.forEach(msg => {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `chat-message ${msg.role}`;
+
+                const bubbleDiv = document.createElement('div');
+                bubbleDiv.className = 'chat-bubble';
+
+                // 출처 정보는 작은 글씨로
+                if (msg.isSource) {
+                    bubbleDiv.style.fontSize = '0.85rem';
+                    bubbleDiv.style.opacity = '0.8';
+                }
+
+                bubbleDiv.textContent = msg.content;
+                messageDiv.appendChild(bubbleDiv);
+                chatbotMessages.appendChild(messageDiv);
+            });
+
+            // 스크롤을 최하단으로
+            chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+            console.log(`✅ 챗봇 대화 내역 ${history.messages.length}개 복원됨`);
+        } catch (error) {
+            console.error('챗봇 대화 내역 불러오기 오류:', error);
+        }
+    }
+
+    // sessionStorage에 메시지 저장
+    function saveChatMessage(role, content, isSource = false) {
+        try {
+            // 기존 내역 가져오기
+            const historyJson = sessionStorage.getItem(CHAT_HISTORY_KEY);
+            const history = historyJson ? JSON.parse(historyJson) : { messages: [] };
+
+            // 새 메시지 추가
+            history.messages.push({
+                role: role,
+                content: content,
+                isSource: isSource,
+                timestamp: new Date().toISOString()
+            });
+
+            // 저장
+            sessionStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(history));
+        } catch (error) {
+            console.error('챗봇 메시지 저장 오류:', error);
+        }
     }
 
     // 채팅 메시지 추가 함수
-    function addChatMessage(role, text) {
+    function addChatMessage(role, text, isSource = false, saveToStorage = true) {
         // 환영 메시지 제거 (첫 메시지 시)
         const welcome = chatbotMessages.querySelector('.chatbot-welcome');
         if (welcome) {
@@ -172,6 +293,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         const bubbleDiv = document.createElement('div');
         bubbleDiv.className = 'chat-bubble';
+
+        // 출처 정보는 작은 글씨로
+        if (isSource) {
+            bubbleDiv.style.fontSize = '0.85rem';
+            bubbleDiv.style.opacity = '0.8';
+        }
+
         bubbleDiv.textContent = text;
 
         messageDiv.appendChild(bubbleDiv);
@@ -179,6 +307,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
         // 스크롤을 최하단으로
         chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
+
+        // sessionStorage에 저장 (로딩 메시지는 저장 안 함)
+        if (saveToStorage) {
+            saveChatMessage(role, text, isSource);
+        }
+
+        return messageDiv;  // 로딩 메시지 제거를 위해 반환
     }
 
     // --- 업로드 페이지 기능 ---
