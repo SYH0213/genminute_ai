@@ -25,17 +25,29 @@
             {% block content %}{% endblock %}
         </div>
 
-        <aside class="ai-sidebar" id="ai-sidebar">
-            <div class="ai-sidebar-header">
-                <h3>AI 회의록</h3>
-                <button class="btn-toggle-sidebar" id="toggle-ai-sidebar">&times;</button>
-            </div>
-            <div class="ai-sidebar-content">
-                <div class="ai-placeholder">
-                    <div class="ai-icon">&#129302;</div>
-                    <p>현재 내용만으로 AI요약이 불가능합니다.<br>내용을 조금 더 채워주세요</p>
-                    <button class="btn-primary" disabled>회의록 만들기</button>
+        <!-- Chatbot Toggle Button (when collapsed) -->
+        <button class="chatbot-toggle-btn" id="chatbot-toggle-btn" title="AI Chatbot">
+            <span class="chatbot-icon">🤖</span>
+        </button>
+
+        <!-- Chatbot Sidebar -->
+        <aside class="chatbot-sidebar" id="chatbot-sidebar">
+            <div class="chatbot-header">
+                <div class="chatbot-header-left">
+                    <span class="chatbot-icon-header">🤖</span>
+                    <h3>AI Chatbot</h3>
                 </div>
+                <button class="btn-close-chatbot" id="btn-close-chatbot">&times;</button>
+            </div>
+            <div class="chatbot-messages" id="chatbot-messages">
+                <div class="chatbot-welcome">
+                    <div class="chatbot-icon-large">🤖</div>
+                    <p>안녕하세요! 회의 내용에 대해 무엇이든 물어보세요.</p>
+                </div>
+            </div>
+            <div class="chatbot-input-container">
+                <input type="text" id="chatbot-input" class="chatbot-input" placeholder="메시지를 입력하세요...">
+                <button id="chatbot-send-btn" class="chatbot-send-btn">전송</button>
             </div>
         </aside>
     </div>

@@ -1,12 +1,85 @@
 document.addEventListener('DOMContentLoaded', () => {
-    // --- 공통 레이아웃 기능 ---
-    const toggleButton = document.getElementById('toggle-ai-sidebar');
+    // --- Chatbot Toggle 기능 ---
+    const chatbotToggleBtn = document.getElementById('chatbot-toggle-btn');
+    const chatbotSidebar = document.getElementById('chatbot-sidebar');
+    const btnCloseChatbot = document.getElementById('btn-close-chatbot');
+    const chatbotInput = document.getElementById('chatbot-input');
+    const chatbotSendBtn = document.getElementById('chatbot-send-btn');
+    const chatbotMessages = document.getElementById('chatbot-messages');
     const appContainer = document.querySelector('.app-container');
 
-    if (toggleButton && appContainer) {
-        toggleButton.addEventListener('click', () => {
-            appContainer.classList.toggle('sidebar-collapsed');
+    // 챗봇 열기
+    if (chatbotToggleBtn) {
+        chatbotToggleBtn.addEventListener('click', () => {
+            chatbotSidebar.classList.add('open');
+            chatbotToggleBtn.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('chatbot-open');
+            }
         });
+    }
+
+    // 챗봇 닫기
+    if (btnCloseChatbot) {
+        btnCloseChatbot.addEventListener('click', () => {
+            chatbotSidebar.classList.remove('open');
+            chatbotToggleBtn.classList.remove('hidden');
+            if (appContainer) {
+                appContainer.classList.remove('chatbot-open');
+            }
+        });
+    }
+
+    // 메시지 전송 (Enter 키)
+    if (chatbotInput) {
+        chatbotInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendChatMessage();
+            }
+        });
+    }
+
+    // 메시지 전송 (버튼 클릭)
+    if (chatbotSendBtn) {
+        chatbotSendBtn.addEventListener('click', sendChatMessage);
+    }
+
+    // 메시지 전송 함수
+    function sendChatMessage() {
+        const message = chatbotInput.value.trim();
+        if (!message) return;
+
+        // 사용자 메시지 추가
+        addChatMessage('user', message);
+        chatbotInput.value = '';
+
+        // TODO: 여기에 API 호출 로직 추가 예정
+        // 임시로 응답 메시지 표시
+        setTimeout(() => {
+            addChatMessage('assistant', '챗봇 API 연동이 아직 구현되지 않았습니다. 곧 추가될 예정입니다.');
+        }, 500);
+    }
+
+    // 채팅 메시지 추가 함수
+    function addChatMessage(role, text) {
+        // 환영 메시지 제거 (첫 메시지 시)
+        const welcome = chatbotMessages.querySelector('.chatbot-welcome');
+        if (welcome) {
+            welcome.remove();
+        }
+
+        const messageDiv = document.createElement('div');
+        messageDiv.className = `chat-message ${role}`;
+
+        const bubbleDiv = document.createElement('div');
+        bubbleDiv.className = 'chat-bubble';
+        bubbleDiv.textContent = text;
+
+        messageDiv.appendChild(bubbleDiv);
+        chatbotMessages.appendChild(messageDiv);
+
+        // 스크롤을 최하단으로
+        chatbotMessages.scrollTop = chatbotMessages.scrollHeight;
     }
 
     // --- 업로드 페이지 기능 ---
