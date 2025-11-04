@@ -8,11 +8,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const chatbotMessages = document.getElementById('chatbot-messages');
     const appContainer = document.querySelector('.app-container');
 
-    // --- 챗봇 대화 내역 관리 (sessionStorage) ---
+    // --- 챗봇 대화 내역 및 상태 관리 (sessionStorage) ---
     const CHAT_HISTORY_KEY = 'chatbot_history';
+    const CHATBOT_STATE_KEY = 'chatbot_state';
 
     // 페이지 로드 시 대화 내역 불러오기
     loadChatHistory();
+
+    // 페이지 로드 시 챗봇 상태 복원
+    restoreChatbotState();
 
     // 드래그 앤 드롭 관련 변수
     let isDragging = false;
@@ -122,17 +126,58 @@ document.addEventListener('DOMContentLoaded', () => {
         if (appContainer) {
             appContainer.classList.add('chatbot-open');
         }
+        // 챗봇 열림 상태 저장
+        sessionStorage.setItem(CHATBOT_STATE_KEY, 'open');
     }
 
-    // 챗봇 닫기
+    // 챗봇 닫기 함수
+    function closeChatbot() {
+        chatbotSidebar.classList.remove('open');
+        chatbotToggleBtn.classList.remove('hidden');
+        if (appContainer) {
+            appContainer.classList.remove('chatbot-open');
+        }
+        // 챗봇 닫힘 상태 저장
+        sessionStorage.setItem(CHATBOT_STATE_KEY, 'closed');
+    }
+
+    // 챗봇 닫기 버튼 이벤트
     if (btnCloseChatbot) {
-        btnCloseChatbot.addEventListener('click', () => {
-            chatbotSidebar.classList.remove('open');
-            chatbotToggleBtn.classList.remove('hidden');
+        btnCloseChatbot.addEventListener('click', closeChatbot);
+    }
+
+    // 챗봇 상태 복원 함수
+    function restoreChatbotState() {
+        const savedState = sessionStorage.getItem(CHATBOT_STATE_KEY);
+        if (savedState === 'open') {
+            // transition 비활성화 (애니메이션 방지)
+            chatbotSidebar.classList.add('no-transition');
             if (appContainer) {
-                appContainer.classList.remove('chatbot-open');
+                appContainer.classList.add('no-transition');
             }
-        });
+
+            // 챗봇이 열려있던 상태였으면 다시 열기
+            chatbotSidebar.classList.add('open');
+            chatbotToggleBtn.classList.add('hidden');
+            if (appContainer) {
+                appContainer.classList.add('chatbot-open');
+            }
+
+            // 다음 프레임에서 transition 재활성화 (사용자 상호작용 시 애니메이션 작동)
+            requestAnimationFrame(() => {
+                requestAnimationFrame(() => {
+                    chatbotSidebar.classList.remove('no-transition');
+                    if (appContainer) {
+                        appContainer.classList.remove('no-transition');
+                    }
+                });
+            });
+
+            console.log('✅ 챗봇 열림 상태 복원 (애니메이션 없음)');
+        } else {
+            // 명시적으로 닫힌 상태이거나 저장된 값이 없으면 닫힌 상태 유지
+            console.log('ℹ️ 챗봇 닫힘 상태 유지');
+        }
     }
 
     // 메시지 전송 (Enter 키)

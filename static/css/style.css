@@ -119,6 +119,15 @@ body {
     transform: translateX(0);
 }
 
+/* 페이지 로드 시 transition 비활성화 */
+.chatbot-sidebar.no-transition {
+    transition: none !important;
+}
+
+.app-container.no-transition .content-wrapper {
+    transition: none !important;
+}
+
 /* --- Chatbot Header --- */
 .chatbot-header {
     display: flex;
@@ -284,7 +293,11 @@ body {
 
 
 /* --- Content Panel (Upload Page) --- */
-.content-panel { padding: 1.5rem 2rem; }
+.content-panel {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem;
+}
 .content-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 2rem; }
 .title-input { font-size: 1.8rem; font-weight: bold; border: none; outline: none; width: 100%; }
 .title-input::placeholder { color: var(--placeholder-text); }
@@ -305,7 +318,11 @@ body {
 .file-name-display { margin-top: 1rem; font-weight: bold; }
 
 /* --- Viewer Page Styles --- */
-.viewer-container { padding: 1.5rem 2rem; }
+.viewer-container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 1.5rem 2rem;
+}
 .viewer-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 1rem; margin-bottom: 2rem; }
 .viewer-header h1 { margin: 0; font-size: 2rem; }
 .player-container { margin-bottom: 2rem; }

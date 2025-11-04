@@ -104,11 +104,44 @@ def upload_and_process():
                     audio_file=first_segment['audio_file'],
                     segments=all_segments  # 전체 segments 전달
                 )
+                print(f"✅ meeting_chunks에 저장 완료 (meeting_id: {meeting_id})")
+
+                # 3. 청킹 저장 후 바로 문단 요약 자동 생성
+                try:
+                    print(f"🤖 문단 요약 자동 생성 시작 (meeting_id: {meeting_id})")
+
+                    # transcript_text 생성
+                    transcript_text = " ".join([row['segment'] for row in all_segments])
+
+                    # subtopic_generate를 이용해 요약 생성
+                    summary_content = stt_manager.subtopic_generate(first_segment['title'], transcript_text)
+
+                    if summary_content:
+                        # meeting_subtopic DB에 저장
+                        vdb_manager.add_meeting_as_subtopic(
+                            meeting_id=meeting_id,
+                            title=first_segment['title'],
+                            meeting_date=first_segment['meeting_date'],
+                            audio_file=first_segment['audio_file'],
+                            summary_content=summary_content
+                        )
+                        print(f"✅ 문단 요약 생성 및 저장 완료 (meeting_id: {meeting_id})")
+                    else:
+                        print(f"⚠️ 문단 요약 생성 실패 (meeting_id: {meeting_id})")
+
+                except Exception as summary_error:
+                    print(f"⚠️ 문단 요약 자동 생성 중 오류 발생: {summary_error}")
+                    import traceback
+                    traceback.print_exc()
+                    # 요약 생성 실패해도 업로드는 성공으로 처리
+
         except Exception as vdb_error:
-            print(f"Vector DB 저장 중 오류 발생: {vdb_error}")
+            print(f"❌ Vector DB 저장 중 오류 발생: {vdb_error}")
+            import traceback
+            traceback.print_exc()
             # 벡터 DB 저장에 실패해도 주요 기능은 계속 동작하도록 일단 넘어감
 
-        # 3. 결과를 보여주는 뷰어 페이지로 리디렉션
+        # 4. 결과를 보여주는 뷰어 페이지로 리디렉션
         # AJAX 요청인 경우 JSON 응답
         if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json:
             return jsonify({

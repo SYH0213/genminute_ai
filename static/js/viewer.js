@@ -186,64 +186,6 @@ document.addEventListener('DOMContentLoaded', () => {
     // 회의록 생성 버튼 이벤트 리스너 초기 연결
     attachMinutesButtonListener();
 
-    // 요약하기 버튼 이벤트 리스너
-    const summarizeButton = document.getElementById('summarize-button');
-    if (summarizeButton) {
-        summarizeButton.addEventListener('click', async () => {
-            if (typeof MEETING_ID === 'undefined' || !MEETING_ID) {
-                alert('회의 ID를 찾을 수 없습니다.');
-                return;
-            }
-
-            if (!confirm('회의 내용을 요약하시겠습니까? 요약에는 시간이 소요될 수 있습니다.')) {
-                return;
-            }
-
-            try {
-                // 버튼 비활성화 및 로딩 표시
-                summarizeButton.disabled = true;
-                summarizeButton.textContent = '요약 중...';
-
-                // 요약 컨테이너에 로딩 메시지 표시
-                summaryContainer.innerHTML = '<div class="summary-loading">요약을 생성하는 중입니다. 잠시만 기다려주세요...</div>';
-
-                // 문단 요약 탭으로 자동 전환
-                tabButtons.forEach(btn => btn.classList.remove('active'));
-                tabContents.forEach(content => content.classList.remove('active'));
-                document.querySelector('[data-tab="summary"]').classList.add('active');
-                document.getElementById('summary-tab').classList.add('active');
-
-                const response = await fetch(`/api/summarize/${MEETING_ID}`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                });
-
-                const data = await response.json();
-
-                if (data.success) {
-                    // 요약 내용을 마크다운에서 HTML로 변환하여 표시
-                    displaySummary(data.summary);
-                    summaryGenerated = true; // 요약 생성 완료 표시
-
-                    alert('요약이 성공적으로 생성되었습니다!');
-                } else {
-                    summaryContainer.innerHTML = `<div class="summary-error">요약 실패: ${data.error}</div>`;
-                    alert(`요약 실패: ${data.error}`);
-                }
-            } catch (error) {
-                console.error('요약 요청 중 오류 발생:', error);
-                summaryContainer.innerHTML = '<div class="summary-error">요약 요청 중 오류가 발생했습니다.</div>';
-                alert('요약 요청 중 오류가 발생했습니다.');
-            } finally {
-                // 버튼 다시 활성화
-                summarizeButton.disabled = false;
-                summarizeButton.textContent = '요약하기';
-            }
-        });
-    }
-
     // 요약 내용 표시 함수
     function displaySummary(summaryText) {
         // 마크다운 형식을 HTML로 변환
