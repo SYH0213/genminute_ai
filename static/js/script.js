@@ -361,7 +361,48 @@ document.addEventListener('DOMContentLoaded', () => {
         return messageDiv;  // 로딩 메시지 제거를 위해 반환
     }
 
-    // --- 업로드 페이지 기능 ---
+    // --- 탭 전환 기능 (오디오 업로드 / 스크립트 입력) ---
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabContents = document.querySelectorAll('.tab-content');
+    const commonTitle = document.getElementById('common-title');
+    const submitButton = document.getElementById('submit-button');
+
+    // 탭 전환
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.getAttribute('data-tab');
+
+            // 모든 탭 버튼 비활성화
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            // 모든 탭 내용 숨기기
+            tabContents.forEach(content => content.classList.remove('active'));
+
+            // 클릭한 탭 활성화
+            button.classList.add('active');
+            document.getElementById(targetTab).classList.add('active');
+
+            // 제출 버튼 텍스트 변경
+            if (targetTab === 'audio-tab') {
+                submitButton.textContent = '음성 인식';
+                submitButton.setAttribute('form', 'upload-form');
+            } else if (targetTab === 'script-tab') {
+                submitButton.textContent = '스크립트 처리';
+                submitButton.setAttribute('form', 'script-form');
+            }
+        });
+    });
+
+    // 공통 제목과 각 폼의 hidden 필드 동기화
+    if (commonTitle) {
+        commonTitle.addEventListener('input', () => {
+            const audioTitle = document.getElementById('audio-title');
+            const scriptTitle = document.getElementById('script-title');
+            if (audioTitle) audioTitle.value = commonTitle.value;
+            if (scriptTitle) scriptTitle.value = commonTitle.value;
+        });
+    }
+
+    // --- 업로드 페이지 기능 (오디오) ---
     const uploadForm = document.getElementById('upload-form');
     if (uploadForm) {
         const dropZone = document.getElementById('drop-zone');
@@ -592,6 +633,137 @@ document.addEventListener('DOMContentLoaded', () => {
                 const formattedDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
                 meetingDateInput.value = formattedDateTime;
             }
+        }
+    }
+
+    // --- 스크립트 입력 페이지 기능 ---
+    const scriptForm = document.getElementById('script-form');
+    if (scriptForm) {
+        const scriptTextInput = document.getElementById('script-text-input');
+        const scriptTitleInput = document.getElementById('script-title');
+        const scriptMeetingDateInput = document.getElementById('script-meeting-date');
+
+        // 폼 제출 시 유효성 검사 및 프로그레스바 표시
+        scriptForm.addEventListener('submit', async (event) => {
+            event.preventDefault(); // 기본 폼 제출 막기
+
+            // 제목 입력 검증
+            if (!scriptTitleInput || scriptTitleInput.value.trim() === '') {
+                alert('제목을 입력해 주세요.');
+                return;
+            }
+
+            // 스크립트 내용 검증
+            if (!scriptTextInput || scriptTextInput.value.trim() === '') {
+                alert('스크립트 내용을 입력해 주세요.');
+                return;
+            }
+
+            // 프로그레스바 시작
+            startScriptProgressBar();
+
+            // FormData 생성
+            const formData = new FormData(scriptForm);
+
+            try {
+                // AJAX로 스크립트 처리
+                const response = await fetch(scriptForm.action, {
+                    method: 'POST',
+                    headers: {
+                        'X-Requested-With': 'XMLHttpRequest'
+                    },
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+
+                    // 100% 완료 표시
+                    completeScriptProgress();
+
+                    // 1초 후 페이지 이동
+                    setTimeout(() => {
+                        window.location.href = result.redirect_url || `/view/${result.meeting_id}`;
+                    }, 1000);
+                } else {
+                    const error = await response.json();
+                    hideScriptProgressBar();
+                    alert(`오류 발생: ${error.error || '알 수 없는 오류'}`);
+                }
+            } catch (error) {
+                console.error('스크립트 처리 중 오류:', error);
+                hideScriptProgressBar();
+                alert('처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
+            }
+        });
+
+        // 프로그레스바 관련 변수 (스크립트용)
+        let scriptProgressInterval = null;
+        let scriptCurrentProgress = 0;
+
+        // 프로그레스바 시작 함수 (스크립트용)
+        function startScriptProgressBar() {
+            const progressModal = document.getElementById('progress-modal');
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressStatus = document.getElementById('progress-status');
+            const progressTitle = document.getElementById('progress-title');
+
+            progressModal.classList.add('active');
+            scriptCurrentProgress = 0;
+
+            // 스크립트 처리는 오디오보다 빠르므로 60초로 설정
+            const totalDuration = 60000; // 60초
+            const targetProgress = 95;
+            const interval = 100; // 100ms마다 업데이트
+            const increment = (targetProgress / totalDuration) * interval;
+
+            progressTitle.textContent = '스크립트 처리 중...';
+            progressStatus.textContent = '스크립트를 분석하고 있습니다...';
+
+            scriptProgressInterval = setInterval(() => {
+                scriptCurrentProgress += increment;
+
+                if (scriptCurrentProgress >= targetProgress) {
+                    scriptCurrentProgress = targetProgress;
+                    progressStatus.textContent = '처리를 완료하고 있습니다...';
+                    clearInterval(scriptProgressInterval);
+                }
+
+                updateScriptProgressBar(scriptCurrentProgress);
+            }, interval);
+        }
+
+        // 프로그레스바 업데이트 (스크립트용)
+        function updateScriptProgressBar(percent) {
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+
+            const displayPercent = Math.min(Math.round(percent), 99);
+            progressBar.style.width = displayPercent + '%';
+            progressText.textContent = displayPercent + '%';
+        }
+
+        // 프로그레스바 완료 (스크립트용)
+        function completeScriptProgress() {
+            clearInterval(scriptProgressInterval);
+
+            const progressBar = document.getElementById('progress-bar');
+            const progressText = document.getElementById('progress-text');
+            const progressStatus = document.getElementById('progress-status');
+
+            scriptCurrentProgress = 100;
+            progressBar.style.width = '100%';
+            progressText.textContent = '100%';
+            progressStatus.textContent = '완료! 페이지를 이동합니다...';
+        }
+
+        // 프로그레스바 숨기기 (스크립트용)
+        function hideScriptProgressBar() {
+            clearInterval(scriptProgressInterval);
+            const progressModal = document.getElementById('progress-modal');
+            progressModal.classList.remove('active');
+            scriptCurrentProgress = 0;
         }
     }
 });

@@ -47,6 +47,113 @@ def allowed_file(filename):
 def index():
     return render_template("index.html")
 
+@app.route("/upload_script", methods=["POST"])
+def upload_script():
+    """스크립트 텍스트를 입력받아 청킹, 문단요약, 회의록 생성까지 처리"""
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json
+
+    # 제목 검증
+    title = request.form.get('title', '').strip()
+    is_valid, error_message = validate_title(title)
+    if not is_valid:
+        if is_ajax:
+            return jsonify({"success": False, "error": error_message}), 400
+        return render_template("index.html", error=error_message)
+
+    # 스크립트 텍스트 검증
+    script_text = request.form.get('script_text', '').strip()
+    if not script_text:
+        if is_ajax:
+            return jsonify({"success": False, "error": "스크립트 내용을 입력해주세요."}), 400
+        return render_template("index.html", error="스크립트 내용을 입력해주세요.")
+
+    # 회의 일시 처리 (입력이 없으면 현재 시간 자동 설정)
+    meeting_date_input = request.form.get('meeting_date', '')
+    meeting_date = parse_meeting_date(meeting_date_input)
+
+    try:
+        # 1. 스크립트 파싱하여 segments 생성
+        segments = stt_manager.parse_script(script_text)
+
+        if not segments:
+            if is_ajax:
+                return jsonify({"success": False, "error": "스크립트 파싱에 실패했습니다. 형식을 확인해주세요."}), 500
+            return render_template("index.html", error="스크립트 파싱에 실패했습니다. 형식을 확인해주세요.")
+
+        # 2. SQLite DB에 개별 대화 저장 (audio_file은 더미값 사용)
+        dummy_filename = f"script_{title[:20]}_{meeting_date.replace(' ', '_').replace(':', '-')}.txt"
+        meeting_id = db.save_stt_to_db(segments, dummy_filename, title, meeting_date)
+
+        # 3. Vector DB에 대화록을 의미적 청크로 저장
+        try:
+            all_segments = db.get_segments_by_meeting_id(meeting_id)
+            if all_segments:
+                # 메타데이터는 첫 번째 세그먼트에서 가져옴
+                first_segment = all_segments[0]
+                # segments를 직접 전달하여 의미적 청킹 수행
+                vdb_manager.add_meeting_as_chunk(
+                    meeting_id=meeting_id,
+                    title=first_segment['title'],
+                    meeting_date=first_segment['meeting_date'],
+                    audio_file=first_segment['audio_file'],
+                    segments=all_segments
+                )
+                print(f"✅ meeting_chunks에 저장 완료 (meeting_id: {meeting_id})")
+
+                # 4. 청킹 저장 후 바로 문단 요약 자동 생성
+                try:
+                    print(f"🤖 문단 요약 자동 생성 시작 (meeting_id: {meeting_id})")
+
+                    # transcript_text 생성
+                    transcript_text = " ".join([row['segment'] for row in all_segments])
+
+                    # subtopic_generate를 이용해 요약 생성
+                    summary_content = stt_manager.subtopic_generate(first_segment['title'], transcript_text)
+
+                    if summary_content:
+                        # meeting_subtopic DB에 저장
+                        vdb_manager.add_meeting_as_subtopic(
+                            meeting_id=meeting_id,
+                            title=first_segment['title'],
+                            meeting_date=first_segment['meeting_date'],
+                            audio_file=first_segment['audio_file'],
+                            summary_content=summary_content
+                        )
+                        print(f"✅ 문단 요약 생성 및 저장 완료 (meeting_id: {meeting_id})")
+                    else:
+                        print(f"⚠️ 문단 요약 생성 실패 (meeting_id: {meeting_id})")
+
+                except Exception as summary_error:
+                    print(f"⚠️ 문단 요약 자동 생성 중 오류 발생: {summary_error}")
+                    import traceback
+                    traceback.print_exc()
+                    # 요약 생성 실패해도 업로드는 성공으로 처리
+
+        except Exception as vdb_error:
+            print(f"❌ Vector DB 저장 중 오류 발생: {vdb_error}")
+            import traceback
+            traceback.print_exc()
+            # 벡터 DB 저장에 실패해도 주요 기능은 계속 동작하도록 일단 넘어감
+
+        # 5. 결과를 보여주는 뷰어 페이지로 리디렉션
+        if is_ajax:
+            return jsonify({
+                "success": True,
+                "meeting_id": meeting_id,
+                "redirect_url": url_for('view_meeting', meeting_id=meeting_id)
+            })
+        else:
+            return redirect(url_for('view_meeting', meeting_id=meeting_id))
+
+    except Exception as e:
+        if is_ajax:
+            return jsonify({
+                "success": False,
+                "error": f"서버 처리 중 오류가 발생했습니다: {e}"
+            }), 500
+        else:
+            return render_template("index.html", error=f"서버 처리 중 오류가 발생했습니다: {e}")
+
 @app.route("/upload", methods=["POST"])
 def upload_and_process():
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json

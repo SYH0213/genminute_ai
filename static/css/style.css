@@ -687,3 +687,71 @@ body {
     font-size: 0.9rem;
     margin-top: 1rem;
 }
+
+/* --- Tab Container (오디오/스크립트 전환) --- */
+.tab-container {
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+    border-bottom: 2px solid var(--border-color);
+    padding-bottom: 0;
+}
+
+.tab-button {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border: none;
+    background-color: transparent;
+    color: var(--text-muted);
+    font-size: 1rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    border-bottom: 3px solid transparent;
+    position: relative;
+    bottom: -2px;
+}
+
+.tab-button:hover {
+    color: var(--primary-color);
+    background-color: rgba(102, 126, 234, 0.05);
+}
+
+.tab-button.active {
+    color: var(--primary-color);
+    border-bottom-color: var(--primary-color);
+    font-weight: 600;
+}
+
+.tab-content {
+    display: none;
+}
+
+.tab-content.active {
+    display: block;
+}
+
+/* --- Script Input Textarea --- */
+#script-text-input {
+    width: 100%;
+    padding: 1rem;
+    border: 2px solid var(--border-color);
+    border-radius: 8px;
+    font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+    font-size: 0.95rem;
+    line-height: 1.6;
+    resize: vertical;
+    min-height: 300px;
+    transition: border-color 0.3s ease;
+}
+
+#script-text-input:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+#script-text-input::placeholder {
+    color: var(--text-muted);
+    opacity: 0.6;
+}

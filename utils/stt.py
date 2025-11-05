@@ -282,7 +282,93 @@ JSON 배열만 출력하고, 추가 설명이나 마크다운 코드 블록은 �
             traceback.print_exc()
             print(f"❌ Gemini 회의록 생성 중 오류 발생: {e}")
             return None
-        
+
+    @staticmethod
+    def parse_script(script_text):
+        """
+        스크립트 텍스트를 파싱하여 segments 형식으로 변환합니다.
+
+        지원 형식:
+        - "화자1: 텍스트" 또는 "1: 텍스트"
+        - "A: 텍스트" 또는 "화자A: 텍스트"
+        - "[화자1] 텍스트" 또는 "[1] 텍스트"
+
+        Args:
+            script_text (str): 스크립트 텍스트 (여러 줄)
+
+        Returns:
+            list: segments 형식의 리스트 (transcribe_audio와 동일한 형식)
+        """
+        import re
+
+        lines = script_text.strip().split('\n')
+        segments = []
+        current_time = 0.0
+        time_increment = 5.0  # 각 발화 간격을 5초로 가정
+        speaker_map = {}  # 화자 문자열 -> 숫자 매핑
+        next_speaker_id = 1
+
+        for idx, line in enumerate(lines):
+            line = line.strip()
+            if not line:
+                continue
+
+            # 패턴 1: "화자1: 텍스트" 또는 "1: 텍스트"
+            match = re.match(r'^(?:화자\s*)?(\d+)\s*:\s*(.+)$', line)
+            if match:
+                speaker_num = int(match.group(1))
+                text = match.group(2).strip()
+            else:
+                # 패턴 2: "A: 텍스트" 또는 "화자A: 텍스트"
+                match = re.match(r'^(?:화자\s*)?([A-Za-z가-힣]+)\s*:\s*(.+)$', line)
+                if match:
+                    speaker_label = match.group(1)
+                    text = match.group(2).strip()
+
+                    # 화자 레이블을 숫자로 매핑
+                    if speaker_label not in speaker_map:
+                        speaker_map[speaker_label] = next_speaker_id
+                        next_speaker_id += 1
+                    speaker_num = speaker_map[speaker_label]
+                else:
+                    # 패턴 3: "[화자1] 텍스트" 또는 "[1] 텍스트"
+                    match = re.match(r'^\[(?:화자\s*)?(\d+)\]\s*(.+)$', line)
+                    if match:
+                        speaker_num = int(match.group(1))
+                        text = match.group(2).strip()
+                    else:
+                        # 패턴 4: "[A] 텍스트" 또는 "[화자A] 텍스트"
+                        match = re.match(r'^\[(?:화자\s*)?([A-Za-z가-힣]+)\]\s*(.+)$', line)
+                        if match:
+                            speaker_label = match.group(1)
+                            text = match.group(2).strip()
+
+                            if speaker_label not in speaker_map:
+                                speaker_map[speaker_label] = next_speaker_id
+                                next_speaker_id += 1
+                            speaker_num = speaker_map[speaker_label]
+                        else:
+                            # 화자 표시 없이 텍스트만 있는 경우 (이전 화자 계속)
+                            print(f"⚠️ 화자를 찾을 수 없는 줄 (건너뜀): {line}")
+                            continue
+
+            # segments에 추가
+            segments.append({
+                "id": idx,
+                "speaker": speaker_num,
+                "start_time": current_time,
+                "confidence": 1.0,  # 스크립트는 신뢰도 100%
+                "text": text
+            })
+
+            current_time += time_increment
+
+        print(f"✅ 스크립트 파싱 완료: {len(segments)}개 세그먼트 생성")
+        if speaker_map:
+            print(f"   화자 매핑: {speaker_map}")
+
+        return segments
+
 
 
 
