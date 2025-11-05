@@ -48,7 +48,21 @@ body {
     color: var(--nav-text);
     padding: 1.5rem 0;
 }
-.nav-logo { font-size: 1.5rem; font-weight: bold; padding: 0 1.5rem 1.5rem 1.5rem; }
+.nav-logo {
+    font-size: 1.5rem;
+    font-weight: bold;
+    padding: 1rem 1rem 1.5rem 1rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nav-logo img {
+    width: 100%;
+    height: auto;
+    max-width: 150px;
+    object-fit: contain;
+}
 .nav-menu { list-style: none; padding: 0; margin: 0; }
 .nav-header { padding: 0 1.5rem; margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; color: #95a5a6; }
 .nav-item a { display: flex; align-items: center; padding: 0.75rem 1.5rem; color: var(--nav-text); text-decoration: none; transition: background-color 0.2s; }
@@ -536,6 +550,25 @@ body {
     font-size: 1.1rem;
 }
 
+/* 회의록이 없을 때 위쪽 정렬 레이아웃 */
+.minutes-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 1rem;
+    padding-top: 3rem;
+}
+
+.minutes-empty .btn-primary {
+    margin: 0;
+}
+
+.minutes-empty .minutes-placeholder {
+    padding: 0;
+    margin: 0;
+}
+
 .minutes-content {
     line-height: 1.8;
     color: var(--text-color);
@@ -754,4 +787,61 @@ body {
 #script-text-input::placeholder {
     color: var(--text-muted);
     opacity: 0.6;
+}
+
+/* ==================== 회의 정보 섹션 ==================== */
+.meeting-info-section {
+    padding: 1.5rem 0;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 1.5rem;
+}
+
+.meeting-date {
+    margin-bottom: 1rem;
+    font-size: 0.95rem;
+    color: var(--text-muted);
+}
+
+.meeting-date span {
+    color: var(--text-color);
+    font-weight: 500;
+}
+
+.meeting-participants {
+    margin-top: 1rem;
+}
+
+.participants-list {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.participant-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 0.85rem;
+    font-weight: 600;
+    cursor: default;
+    transition: transform 0.2s ease;
+}
+
+.participant-icon:hover {
+    transform: scale(1.1);
+}
+
+.participant-icon span {
+    user-select: none;
+}
+
+.no-participants {
+    font-size: 0.9rem;
+    color: var(--text-muted);
+    font-style: italic;
 }

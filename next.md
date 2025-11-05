@@ -1,6 +1,6 @@
 # Minute AI - 인수인계 문서
 
-## 📅 마지막 업데이트: 2025-11-04
+## 📅 마지막 업데이트: 2025-11-05
 
 ---
 
@@ -113,6 +113,202 @@ CREATE TABLE meeting_minutes (
       "audio_file": str
   }
   ```
+
+---
+
+## 🆕 최근 구현 내용 (2025-11-05)
+
+### 1️⃣ 메타데이터 추출 기능 롤백 (완료)
+
+**배경**: 오디오 파일의 생성 날짜를 추출하려 했으나 복잡도가 높고 신뢰성 문제 발생
+
+**변경 사항**:
+- ❌ 제거: mutagen 기반 메타데이터 추출 코드 전체 삭제
+- ❌ 제거: File API 기반 `lastModified` 확인 로직
+- ✅ 단순화: 업로드 시점의 타임스탬프를 `meeting_date`로 사용
+
+**수정된 파일**:
+- `app.py:187-188` - 현재 시간으로 변경
+  ```python
+  meeting_date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+  ```
+- `app.py` - 삭제된 함수들:
+  - `extract_audio_creation_date()` (45-177줄)
+  - `get_audio_metadata()` (158-182줄)
+  - `/api/check_metadata` 엔드포인트 (184-236줄)
+- `templates/index.html:27-33` - 메타데이터 표시 UI 제거
+- `static/js/script.js:635-657` - `checkFileMetadata()` 함수 및 호출 코드 삭제
+
+**결과**: 노트 생성 시 업로드 시점의 시간이 자동으로 기록됨
+
+---
+
+### 2️⃣ 회의 상세 페이지 UI 개선 (완료)
+
+**추가된 기능**:
+- 📅 회의 날짜 표시 (제목과 오디오 플레이어 사이)
+- 👥 참석자 목록 표시 (색상별 원형 아이콘)
+
+**UI 레이아웃**:
+```
+[제목]
+─────────────────────
+📅 2025년 11월 5일
+👤👤👤 SPEAKER_00, SPEAKER_01, SPEAKER_02
+─────────────────────
+[오디오 플레이어]
+```
+
+**수정된 파일**:
+- `templates/viewer.html:12-22` - 회의 정보 섹션 추가
+  ```html
+  <div class="meeting-info-section">
+      <div class="meeting-date">
+          <span id="meeting-date-display">날짜 로딩 중...</span>
+      </div>
+      <div class="meeting-participants">
+          <div class="participants-list" id="participants-list"></div>
+      </div>
+  </div>
+  ```
+
+- `static/js/viewer.js:280-346` - 새로운 함수 추가:
+  - `displayMeetingDate(meetingDate)` - 날짜 포맷팅 및 표시
+  - `displayParticipants(participants)` - 참석자 아이콘 생성
+
+- `app.py:284-310` - `/api/meeting/<meeting_id>` 엔드포인트 수정:
+  ```python
+  # 참석자 목록 추출 (중복 제거된 speaker_label 목록)
+  participants = list(set([t['speaker_label'] for t in transcript if t.get('speaker_label')]))
+  participants.sort()
+
+  return jsonify({
+      ...
+      "meeting_date": meeting_date,
+      "participants": participants,
+      ...
+  })
+  ```
+
+- `static/css/style.css:760-814` - 회의 정보 섹션 스타일 추가:
+  - 참석자 아이콘: 36px 원형, 5가지 색상 순환
+  - 날짜 표시: 회색 텍스트, 하단 여백
+
+**특징**:
+- ✅ 참석자는 speaker_label에서 자동 추출 (중복 제거)
+- ✅ 5가지 색상으로 화자 구분 (#4A90E2, #50C878, #F39C12, #9B59B6, #E74C3C)
+- ✅ 날짜는 한국어 형식으로 표시 (예: 2025년 11월 5일)
+
+---
+
+### 3️⃣ 회의록 탭 빈 상태 UI 재디자인 (완료)
+
+**변경 사항**:
+- 기존: 버튼과 텍스트가 화면 중앙에 위치
+- 개선: 버튼과 텍스트를 상단에 세로로 배치
+
+**새 레이아웃**:
+```
+┌─────────────────────┐
+│                     │
+│  회의록 생성 버튼을 │  ← 텍스트 먼저
+│  눌러 정식 회의록을 │
+│  작성하세요.        │
+│                     │
+│  [회의록 생성]       │  ← 버튼 아래
+│                     │
+│                     │
+└─────────────────────┘
+```
+
+**수정된 파일**:
+- `templates/viewer.html:53-55` - HTML 순서 변경 및 클래스 추가:
+  ```html
+  <div id="minutes-container" class="minutes-container minutes-empty">
+      <p class="minutes-placeholder">회의록 생성 버튼을 눌러 정식 회의록을 작성하세요.</p>
+      <button id="generate-minutes-button" class="btn-primary">회의록 생성</button>
+  </div>
+  ```
+
+- `static/css/style.css:540-555` - 빈 상태 스타일 추가:
+  ```css
+  .minutes-empty {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;  /* 상단 정렬 */
+      gap: 1rem;
+      padding-top: 3rem;            /* 상단 여백 */
+  }
+  ```
+
+- `static/js/viewer.js:326-328` - 회의록 생성 시 빈 상태 클래스 제거:
+  ```javascript
+  function displayMinutes(minutesText) {
+      minutesContainer.classList.remove('minutes-empty');
+      // ...
+  }
+  ```
+
+---
+
+### 4️⃣ 로고 통합 (완료)
+
+**변경 사항**:
+- 좌측 네비게이션 상단의 "Ai:" 텍스트를 GenMinute 로고 이미지로 교체
+
+**수정된 파일**:
+- `templates/layout.html:13-15` - 로고 이미지 태그로 변경:
+  ```html
+  <div class="nav-logo">
+      <img src="{{ url_for('static', filename='image/logo.png') }}" alt="GenMinute Logo">
+  </div>
+  ```
+
+- `static/css/style.css:51-65` - 로고 스타일링:
+  ```css
+  .nav-logo img {
+      width: 100%;
+      height: auto;
+      max-width: 150px;  /* 최종 크기 */
+      object-fit: contain;
+  }
+  ```
+
+**크기 조정 과정**:
+- 초기: 220px (너무 큼)
+- 수정: 180px (여전히 큼)
+- 최종: 150px (네비게이션 폭에 맞춤)
+
+---
+
+### 5️⃣ STT 화자 병합 로직 변경 (완료)
+
+**배경**: Python 함수로 동일 화자의 연속 발화를 병합하려 했으나 문제 발생
+
+**문제점**:
+1. `@staticmethod` 데코레이터 누락
+2. 함수 호출 방식 오류 (plain function vs class method)
+3. `start_time` 정보 손실
+4. `confidence` 값 부정확성
+5. `id` 필드 불연속성
+6. 문장 길이 제한 로직 없음
+
+**최종 해결 방법**:
+- ❌ Python 함수 삭제: `merge_consecutive_speaker_segments()` 전체 제거
+- ✅ Gemini 프롬프트 기반 병합: AI에게 병합 로직 위임
+
+**수정된 파일**:
+- `utils/stt.py:68` - Gemini 프롬프트에 병합 지침 추가:
+  ```python
+  "13. speaker가 동일한 경우 하나의 행으로 만듭니다. 단, 문장이 5개를 넘어갈 경우 다음 대화로 분리한다."
+  ```
+- `utils/stt.py:143` - 병합 함수 호출 제거, `normalized_segments` 직접 반환
+
+**장점**:
+- ✅ 코드 복잡도 감소
+- ✅ AI가 맥락을 고려한 스마트 병합 가능
+- ✅ 문장 길이 제한 자동 적용 (5문장 초과 시 분리)
 
 ---
 
@@ -584,5 +780,5 @@ templates/viewer.html      # 타임스탬프 점프 로직
 ---
 
 **작성자**: Claude Code
-**마지막 업데이트**: 2025-11-04 (AI 챗봇 완료, 일괄 삭제 기능 추가, 삭제 검증 로그 추가)
+**마지막 업데이트**: 2025-11-05 (메타데이터 롤백, 회의 상세 UI 개선, 회의록 탭 재디자인, 로고 통합, STT 병합 로직 변경)
 **다음 작업 우선순위**: 1️⃣ 일괄 삭제 프로그레스 모달 → 2️⃣ 챗봇 추천 질문 → 3️⃣ 챗봇 출처 링크

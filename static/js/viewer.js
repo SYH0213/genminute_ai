@@ -54,6 +54,12 @@ document.addEventListener('DOMContentLoaded', () => {
             meetingTitle.textContent = data.title;
             audioPlayer.src = data.audio_url;
 
+            // 회의 날짜 표시
+            displayMeetingDate(data.meeting_date);
+
+            // 참석자 목록 표시
+            displayParticipants(data.participants);
+
             renderTranscript(segments);
 
             // 문단 요약 존재 여부 확인 및 표시
@@ -271,8 +277,56 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // 회의 날짜 표시 함수
+    function displayMeetingDate(meetingDate) {
+        const dateDisplay = document.getElementById('meeting-date-display');
+        if (!dateDisplay || !meetingDate) return;
+
+        // "2025-01-05 14:30:00" 형식을 "2025년 1월 5일" 형식으로 변환
+        try {
+            const date = new Date(meetingDate);
+            const formattedDate = date.toLocaleDateString('ko-KR', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+            dateDisplay.textContent = formattedDate;
+        } catch (error) {
+            console.error('날짜 포맷 오류:', error);
+            dateDisplay.textContent = meetingDate; // 변환 실패 시 원본 표시
+        }
+    }
+
+    // 참석자 목록 표시 함수
+    function displayParticipants(participants) {
+        const participantsList = document.getElementById('participants-list');
+        if (!participantsList) return;
+
+        // 참석자가 없으면 기본 메시지 표시
+        if (!participants || participants.length === 0) {
+            participantsList.innerHTML = '<span class="no-participants">참석자 정보 없음</span>';
+            return;
+        }
+
+        // 참석자 아이콘들 생성
+        participantsList.innerHTML = participants.map((speaker, index) => {
+            // 배경색을 speaker별로 다르게 설정 (최대 5개 색상 순환)
+            const colors = ['#4A90E2', '#50C878', '#F39C12', '#9B59B6', '#E74C3C'];
+            const color = colors[index % colors.length];
+
+            return `
+                <div class="participant-icon" style="background-color: ${color}" title="화자 ${speaker}">
+                    <span>${speaker}</span>
+                </div>
+            `;
+        }).join('');
+    }
+
     // 회의록 내용 표시 함수
     function displayMinutes(minutesText) {
+        // minutes-empty 클래스 제거 (회의록이 있으므로)
+        minutesContainer.classList.remove('minutes-empty');
+
         // 마크다운 형식을 HTML로 변환
         let htmlContent = minutesText
             // # 제목 -> <h1>제목</h1>

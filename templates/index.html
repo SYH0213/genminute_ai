@@ -6,75 +6,30 @@
 {% block content %}
 <main class="content-panel">
     <header class="content-header">
-        <input type="text" name="title" id="common-title" placeholder="제목을 입력 해주세요" class="title-input">
-        <button type="submit" id="submit-button" class="btn-primary">음성 인식</button>
+        <input type="text" name="title" form="upload-form" placeholder="제목을 입력 해주세요" class="title-input">
     </header>
     {% if error %}
         <div class="flash-error">{{ error }}</div>
     {% endif %}
-
-    <!-- 탭 버튼 -->
-    <div class="tab-container">
-        <button type="button" class="tab-button active" data-tab="audio-tab">🎤 오디오 업로드</button>
-        <button type="button" class="tab-button" data-tab="script-tab">📝 스크립트 입력</button>
-    </div>
-
-    <!-- 오디오 업로드 탭 -->
-    <div id="audio-tab" class="tab-content active">
-        <form class="meeting-form" id="upload-form" method="POST" action="{{ url_for('upload_and_process') }}" enctype="multipart/form-data" novalidate>
-            <input type="hidden" name="title" id="audio-title">
-            <div class="form-group">
-                <label>참여자</label>
-                <div class="participants">
-                    <span class="participant">shwinwiz +</span>
-                    <button type="button" class="btn-add-group">추가</button>
-                </div>
+    <form class="meeting-form" id="upload-form" method="POST" action="{{ url_for('upload_and_process') }}" enctype="multipart/form-data" novalidate>
+        <div class="form-group">
+            <div class="drop-zone" id="drop-zone">
+                <input type="file" id="audio-file-input" name="audio_file" accept=".wav,.mp3,.m4a,.flac" style="display: none;" required>
+                <div class="drop-zone-icon">&#128229;</div>
+                <p>음성 파일을 여기로 끌어놓으시면 업로드가 시작됩니다</p>
+                <button type="button" class="btn-primary" id="upload-button">파일 선택</button>
+                <p id="file-name-display" class="file-name-display"></p>
+                <p class="file-types-small">(파일형식: .wav, .mp3, .m4a, .flac)</p>
             </div>
-            <div class="form-group">
-                <label>회의 일시</label>
-                <input type="datetime-local" name="meeting_date" id="audio-meeting-date" class="meeting-date-input">
-            </div>
-            <div class="form-group">
-                <div class="drop-zone" id="drop-zone">
-                    <input type="file" id="audio-file-input" name="audio_file" accept=".wav,.mp3,.m4a,.flac" style="display: none;" required>
-                    <div class="drop-zone-icon">&#128229;</div>
-                    <p>음성 파일을 여기로 끌어놓으시면 업로드가 시작됩니다</p>
-                    <button type="button" class="btn-primary" id="upload-button">파일 선택</button>
-                    <p id="file-name-display" class="file-name-display"></p>
-                    <p class="file-types-small">(파일형식: .wav, .mp3, .m4a, .flac)</p>
-                </div>
-            </div>
-        </form>
-    </div>
-
-    <!-- 스크립트 입력 탭 -->
-    <div id="script-tab" class="tab-content">
-        <form class="meeting-form" id="script-form" method="POST" action="{{ url_for('upload_script') }}" novalidate>
-            <input type="hidden" name="title" id="script-title">
-            <div class="form-group">
-                <label>참여자</label>
-                <div class="participants">
-                    <span class="participant">shwinwiz +</span>
-                    <button type="button" class="btn-add-group">추가</button>
-                </div>
-            </div>
-            <div class="form-group">
-                <label>회의 일시</label>
-                <input type="datetime-local" name="meeting_date" id="script-meeting-date" class="meeting-date-input">
-            </div>
-            <div class="form-group">
-                <label>스크립트 내용</label>
-                <textarea name="script_text" id="script-text-input" rows="15" placeholder="지원 형식:&#10;1: 안녕하세요. 회의를 시작하겠습니다.&#10;2: 네, 좋습니다.&#10;&#10;또는&#10;화자A: 안녕하세요.&#10;화자B: 네, 반갑습니다.&#10;&#10;또는&#10;[1] 안녕하세요.&#10;[2] 네, 좋습니다." required></textarea>
-                <p class="file-types-small">지원 형식: "화자번호: 텍스트", "화자이름: 텍스트", "[화자번호] 텍스트" 등</p>
-            </div>
-        </form>
-    </div>
+            <button type="submit" id="submit-button" class="btn-primary" style="display: none; margin-top: 1.5rem; width: 100%;">노트 생성</button>
+        </div>
+    </form>
 
     <!-- 프로그레스바 모달 -->
     <div id="progress-modal" class="progress-modal">
         <div class="progress-modal-content">
             <div class="progress-icon">🎤</div>
-            <h2 id="progress-title">음성 인식 중...</h2>
+            <h2>음성 인식 중...</h2>
             <p id="progress-status">파일을 업로드하고 있습니다</p>
             <div class="progress-bar-container">
                 <div class="progress-bar" id="progress-bar">

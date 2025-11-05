@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory
 import os
 import json
+import datetime as dt
 from werkzeug.utils import secure_filename
 from google import genai
 from google.genai import types
@@ -178,15 +179,14 @@ def upload_and_process():
             return jsonify({"success": False, "error": "파일이 없거나 허용되지 않는 형식입니다."}), 400
         return render_template("index.html", error="파일이 없거나 허용되지 않는 형식입니다.")
 
-    # 회의 일시 처리 (입력이 없으면 현재 시간 자동 설정)
-    meeting_date_input = request.form.get('meeting_date', '')
-    meeting_date = parse_meeting_date(meeting_date_input)
-
     try:
         filename = secure_filename(file.filename)
         audio_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
         file.save(audio_path)
-    
+
+        # 업로드 시점의 현재 시간을 회의 일시로 사용
+        meeting_date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
         segments = stt_manager.transcribe_audio(audio_path)
 
         if not segments:
@@ -291,9 +291,19 @@ def get_meeting_data(meeting_id):
         transcript = [dict(row) for row in rows]
         audio_file = rows[0]['audio_file']
         title = rows[0]['title']
+        meeting_date = rows[0]['meeting_date']
+
+        # 참석자 목록 추출 (중복 제거된 speaker_label 목록)
+        # transcript는 이미 dict로 변환되었으므로 .get() 사용 가능
+        participants = list(set([t['speaker_label'] for t in transcript if t.get('speaker_label')]))
+        participants.sort()  # 알파벳/숫자 순으로 정렬
 
         return jsonify({
-            "success": True, "meeting_id": meeting_id, "title": title,
+            "success": True,
+            "meeting_id": meeting_id,
+            "title": title,
+            "meeting_date": meeting_date,
+            "participants": participants,
             "audio_url": url_for('uploaded_file', filename=audio_file),
             "transcript": transcript
         })
@@ -408,6 +418,11 @@ def summary_template_page():
 def retriever_page():
     """리트리버 테스트 페이지를 렌더링합니다."""
     return render_template("retriever.html")
+
+@app.route("/script-input")
+def script_input_page():
+    """스크립트 입력 페이지를 렌더링합니다."""
+    return render_template("script_input.html")
 
 @app.route("/api/check_summary/<string:meeting_id>", methods=["GET"])
 def check_summary(meeting_id):

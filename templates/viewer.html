@@ -9,6 +9,18 @@
             <h1 id="meeting-title">회의록 로딩 중...</h1>
         </header>
 
+        <!-- 회의 정보 섹션 -->
+        <div class="meeting-info-section">
+            <div class="meeting-date">
+                <span id="meeting-date-display">날짜 로딩 중...</span>
+            </div>
+            <div class="meeting-participants">
+                <div class="participants-list" id="participants-list">
+                    <!-- 참석자 아이콘들이 동적으로 추가됨 -->
+                </div>
+            </div>
+        </div>
+
         <div class="player-container">
             <audio id="audio-player" controls></audio>
         </div>
@@ -38,9 +50,9 @@
 
             <!-- 회의록 탭 -->
             <div id="minutes-tab" class="tab-content">
-                <div id="minutes-container" class="minutes-container">
+                <div id="minutes-container" class="minutes-container minutes-empty">
                     <p class="minutes-placeholder">회의록 생성 버튼을 눌러 정식 회의록을 작성하세요.</p>
-                    <button id="generate-minutes-button" class="btn-primary" style="margin-top: 1rem;">회의록 생성</button>
+                    <button id="generate-minutes-button" class="btn-primary">회의록 생성</button>
                 </div>
             </div>
         </div>

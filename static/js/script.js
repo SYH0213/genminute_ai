@@ -361,47 +361,6 @@ document.addEventListener('DOMContentLoaded', () => {
         return messageDiv;  // 로딩 메시지 제거를 위해 반환
     }
 
-    // --- 탭 전환 기능 (오디오 업로드 / 스크립트 입력) ---
-    const tabButtons = document.querySelectorAll('.tab-button');
-    const tabContents = document.querySelectorAll('.tab-content');
-    const commonTitle = document.getElementById('common-title');
-    const submitButton = document.getElementById('submit-button');
-
-    // 탭 전환
-    tabButtons.forEach(button => {
-        button.addEventListener('click', () => {
-            const targetTab = button.getAttribute('data-tab');
-
-            // 모든 탭 버튼 비활성화
-            tabButtons.forEach(btn => btn.classList.remove('active'));
-            // 모든 탭 내용 숨기기
-            tabContents.forEach(content => content.classList.remove('active'));
-
-            // 클릭한 탭 활성화
-            button.classList.add('active');
-            document.getElementById(targetTab).classList.add('active');
-
-            // 제출 버튼 텍스트 변경
-            if (targetTab === 'audio-tab') {
-                submitButton.textContent = '음성 인식';
-                submitButton.setAttribute('form', 'upload-form');
-            } else if (targetTab === 'script-tab') {
-                submitButton.textContent = '스크립트 처리';
-                submitButton.setAttribute('form', 'script-form');
-            }
-        });
-    });
-
-    // 공통 제목과 각 폼의 hidden 필드 동기화
-    if (commonTitle) {
-        commonTitle.addEventListener('input', () => {
-            const audioTitle = document.getElementById('audio-title');
-            const scriptTitle = document.getElementById('script-title');
-            if (audioTitle) audioTitle.value = commonTitle.value;
-            if (scriptTitle) scriptTitle.value = commonTitle.value;
-        });
-    }
-
     // --- 업로드 페이지 기능 (오디오) ---
     const uploadForm = document.getElementById('upload-form');
     if (uploadForm) {
@@ -409,25 +368,58 @@ document.addEventListener('DOMContentLoaded', () => {
         const uploadButton = document.getElementById('upload-button');
         const fileInput = document.getElementById('audio-file-input');
         const fileNameDisplay = document.getElementById('file-name-display');
-        const sttSubmitButton = document.querySelector('button[type="submit"]');
+        const submitButton = document.getElementById('submit-button');
         const titleInput = document.querySelector('input[name="title"]');
-        const meetingDateInput = document.getElementById('meeting-date-input');
+
+        // 파일 대화상자 상태 추적
+        let fileDialogOpen = false;
 
         // '파일 선택' 버튼 클릭
         if (uploadButton) {
-            uploadButton.addEventListener('click', () => fileInput.click());
+            uploadButton.addEventListener('click', () => {
+                fileDialogOpen = true;
+                fileInput.click();
+            });
         }
 
         // 파일이 직접 선택되었을 때
         if (fileInput) {
             fileInput.addEventListener('change', () => {
+                fileDialogOpen = false;
                 if (fileInput.files.length > 0) {
-                    handleFile(fileInput.files[0]);
-                    // 회의 일시가 비어있으면 현재 날짜/시간 자동 입력
-                    autoFillMeetingDate();
+                    const file = fileInput.files[0];
+                    handleFile(file);
+
+                    // 파일이 선택되면 노트 생성 버튼 보이기
+                    if (submitButton) {
+                        submitButton.style.display = 'block';
+                    }
+                } else {
+                    // 파일이 없으면 UI 초기화
+                    fileNameDisplay.textContent = '';
+                    if (submitButton) {
+                        submitButton.style.display = 'none';
+                    }
                 }
             });
         }
+
+        // 파일 대화상자가 닫힌 후 파일 선택 여부 확인
+        window.addEventListener('focus', () => {
+            if (fileDialogOpen) {
+                fileDialogOpen = false;
+                // 파일 대화상자가 닫힌 후 잠시 후 확인
+                setTimeout(() => {
+                    if (fileInput && fileInput.files.length === 0) {
+                        // 파일이 선택되지 않은 경우 UI 초기화
+                        fileNameDisplay.textContent = '';
+                        if (submitButton) {
+                            submitButton.style.display = 'none';
+                        }
+                    }
+                }, 300);
+            }
+        }, true);
 
         // 드래그 앤 드롭
         if (dropZone) {
@@ -445,9 +437,19 @@ document.addEventListener('DOMContentLoaded', () => {
                 const files = e.dataTransfer.files;
                 if (files.length > 0) {
                     fileInput.files = files;
-                    handleFile(files[0]);
-                    // 회의 일시가 비어있으면 현재 날짜/시간 자동 입력
-                    autoFillMeetingDate();
+                    const file = files[0];
+                    handleFile(file);
+
+                    // 파일이 드롭되면 노트 생성 버튼 보이기
+                    if (submitButton) {
+                        submitButton.style.display = 'block';
+                    }
+                } else {
+                    // 파일이 없으면 UI 초기화
+                    fileNameDisplay.textContent = '';
+                    if (submitButton) {
+                        submitButton.style.display = 'none';
+                    }
                 }
             });
         }
@@ -616,22 +618,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 fileNameDisplay.textContent = '지원하지 않는 파일 형식입니다.';
                 fileNameDisplay.style.color = '#e74c3c';
                 fileInput.value = '';
-            }
-        }
-
-        // 회의 일시 자동 입력 함수
-        function autoFillMeetingDate() {
-            if (meetingDateInput && !meetingDateInput.value) {
-                // 현재 날짜/시간을 datetime-local 형식으로 변환 (YYYY-MM-DDTHH:MM)
-                const now = new Date();
-                const year = now.getFullYear();
-                const month = String(now.getMonth() + 1).padStart(2, '0');
-                const day = String(now.getDate()).padStart(2, '0');
-                const hours = String(now.getHours()).padStart(2, '0');
-                const minutes = String(now.getMinutes()).padStart(2, '0');
-
-                const formattedDateTime = `${year}-${month}-${day}T${hours}:${minutes}`;
-                meetingDateInput.value = formattedDateTime;
+                // 유효하지 않은 파일인 경우 버튼 숨기기
+                if (submitButton) {
+                    submitButton.style.display = 'none';
+                }
             }
         }
     }
@@ -640,7 +630,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const scriptForm = document.getElementById('script-form');
     if (scriptForm) {
         const scriptTextInput = document.getElementById('script-text-input');
-        const scriptTitleInput = document.getElementById('script-title');
+        const scriptTitleInput = document.querySelector('input[name="title"][form="script-form"]');
         const scriptMeetingDateInput = document.getElementById('script-meeting-date');
 
         // 폼 제출 시 유효성 검사 및 프로그레스바 표시

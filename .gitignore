@@ -1,6 +1,10 @@
 **.wav
+**.m4a
+**.mp3
+**.mp4
 vector_db/
-minute_ai.db
+**.db
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
