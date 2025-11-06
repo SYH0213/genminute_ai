@@ -357,6 +357,12 @@ def upload_script():
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload_and_process():
+    import datetime
+    import threading
+    thread_id = threading.current_thread().name
+    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"\n[{timestamp}][{thread_id}] 📥 업로드 요청 수신")
+
     is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json
 
     # 현재 로그인한 사용자 ID
@@ -385,7 +391,14 @@ def upload_and_process():
     try:
         filename = secure_filename(file.filename)
         original_file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}][{thread_id}] 💾 파일 저장 시작: {filename}")
+
         file.save(original_file_path)
+
+        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+        print(f"[{timestamp}][{thread_id}] ✅ 파일 저장 완료: {filename}")
 
         # 업로드 시점의 현재 시간을 회의 일시로 사용
         meeting_date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")

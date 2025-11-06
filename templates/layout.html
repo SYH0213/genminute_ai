@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}Minute AI{% endblock %}</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
 </head>
 <body>
@@ -15,12 +16,16 @@
             </div>
             <ul class="nav-menu">
                 <li class="nav-header">Meeting</li>
-                <li class="nav-item" data-page="index"><a href="{{ url_for('index') }}"><span>&#128190;</span> 새노트 만들기</a></li>
-                <li class="nav-item" data-page="list_notes"><a href="{{ url_for('list_notes') }}"><span>&#128214;</span> 노트 보기</a></li>
+                <li class="nav-item" data-page="index"><a href="{{ url_for('index') }}"><i class="fa-solid fa-plus"></i> 새노트 만들기</a></li>
+                <li class="nav-item" data-page="list_notes"><a href="{{ url_for('list_notes') }}"><i class="fa-solid fa-folder-open"></i> 노트 보기</a></li>
+                {% if is_admin %}
                 <li class="nav-header">Debug</li>
-                <li class="nav-item" data-page="script_input_page"><a href="{{ url_for('script_input_page') }}"><span>&#128196;</span> 스크립트입력</a></li>
-                <li class="nav-item" data-page="retriever_page"><a href="{{ url_for('retriever_page') }}"><span>&#128269;</span> 리트리버</a></li>
-                <li class="nav-item" data-page="summary_template_page"><a href="{{ url_for('summary_template_page') }}"><span>&#128221;</span> 요약/템플릿</a></li>
+                <li class="nav-item" data-page="script_input_page"><a href="{{ url_for('script_input_page') }}"><i class="fa-solid fa-file-lines"></i> 스크립트입력</a></li>
+                <li class="nav-item" data-page="retriever_page"><a href="{{ url_for('retriever_page') }}"><i class="fa-solid fa-magnifying-glass"></i> 리트리버</a></li>
+                <li class="nav-item" data-page="summary_template_page"><a href="{{ url_for('summary_template_page') }}"><i class="fa-solid fa-list-check"></i> 요약/템플릿</a></li>
+                {% endif %}
+                <li class="nav-header">Account</li>
+                <li class="nav-item"><a href="#" id="logout-btn"><i class="fa-solid fa-right-from-bracket"></i> 로그아웃</a></li>
             </ul>
         </nav>
 
@@ -28,23 +33,24 @@
             {% block content %}{% endblock %}
         </div>
 
-        <!-- Chatbot Toggle Button (when collapsed) -->
-        <button class="chatbot-toggle-btn" id="chatbot-toggle-btn" title="AI Chatbot">
-            <span class="chatbot-icon">🤖</span>
+        <!-- Chatbot Toggle Tab (when collapsed) -->
+        <button class="chatbot-toggle-tab" id="chatbot-toggle-tab" title="AI Assistant">
+            <span class="tab-icon">&#10094;</span>
+            <span class="tab-text">CHAT</span>
         </button>
 
         <!-- Chatbot Sidebar -->
         <aside class="chatbot-sidebar" id="chatbot-sidebar">
             <div class="chatbot-header">
                 <div class="chatbot-header-left">
-                    <span class="chatbot-icon-header">🤖</span>
-                    <h3>AI Chatbot</h3>
+                    <i class="fa-solid fa-robot chatbot-icon-header"></i>
+                    <h3>AI Assistant</h3>
                 </div>
                 <button class="btn-close-chatbot" id="btn-close-chatbot">&times;</button>
             </div>
             <div class="chatbot-messages" id="chatbot-messages">
                 <div class="chatbot-welcome">
-                    <div class="chatbot-icon-large">🤖</div>
+                    <div class="chatbot-icon-large"><i class="fa-solid fa-robot"></i></div>
                     <p>안녕하세요! 회의 내용에 대해 무엇이든 물어보세요.</p>
                 </div>
             </div>
@@ -86,6 +92,39 @@
                 if (targetItem) {
                     targetItem.classList.add('active');
                 }
+            }
+
+            // 로그아웃 버튼 이벤트
+            const logoutBtn = document.getElementById('logout-btn');
+            if (logoutBtn) {
+                logoutBtn.addEventListener('click', async (e) => {
+                    e.preventDefault();
+
+                    if (!confirm('로그아웃 하시겠습니까?')) {
+                        return;
+                    }
+
+                    try {
+                        const response = await fetch('/api/logout', {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            }
+                        });
+
+                        const data = await response.json();
+
+                        if (data.success) {
+                            // 로그인 페이지로 리다이렉트
+                            window.location.href = '/login';
+                        } else {
+                            alert('로그아웃에 실패했습니다.');
+                        }
+                    } catch (error) {
+                        console.error('로그아웃 오류:', error);
+                        alert('로그아웃 중 오류가 발생했습니다.');
+                    }
+                });
             }
         });
     </script>

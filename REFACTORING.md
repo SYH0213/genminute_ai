@@ -1609,6 +1609,196 @@ class QueueService:
 
 ---
 
+### 11. 폼 재전송 방지 부재 🟡 Medium Priority
+
+**현재 문제**:
+- 노트 생성 후 페이지를 새로고침하거나 창을 닫았다가 다시 열면 이전 폼 데이터가 남아있음
+- 브라우저가 폼 재전송을 허용하여 중복 업로드가 발생 가능
+- 같은 파일이 여러 번 처리되어 불필요한 API 비용과 DB 중복 데이터 발생
+
+**재현 방법**:
+```
+1. 노트 생성 완료
+2. 브라우저 창 닫기
+3. 다시 창 열기 (또는 새로고침)
+4. "노트 생성" 버튼이 다시 활성화되어 있음
+5. 버튼 클릭 시 동일한 요청이 다시 전송됨
+```
+
+**로그 예시**:
+```
+[18:17:42.325][Thread-26] 🎧 Gemini STT API로 음성 인식 중: 251106_PPT.m4a
+[18:19:59.125][Thread-7] 🎧 Gemini STT API로 음성 인식 중: 251106_PPT.m4a
+# 동일한 파일이 2번 처리됨
+```
+
+**개선 방안 1**: Post/Redirect/Get (PRG) 패턴
+
+```python
+# blueprints/upload.py (개선)
+@upload_bp.route("/upload", methods=["POST"])
+@login_required
+def upload_and_process():
+    # 처리 로직...
+    meeting_id = upload_service.process_audio_upload(...)
+
+    # ❌ 현재: JSON 응답 반환
+    # return jsonify({"success": True, "meeting_id": meeting_id})
+
+    # ✅ 개선: 302 리다이렉트로 변경
+    return redirect(url_for('meeting.view_meeting', meeting_id=meeting_id))
+```
+
+```javascript
+// static/js/script.js (개선)
+async function handleUpload(formData) {
+    // ❌ 현재: AJAX 요청
+    const response = await fetch('/upload', {
+        method: 'POST',
+        body: formData
+    });
+
+    // ✅ 개선: 폼 제출 후 페이지 이동
+    // 또는 응답 후 history.replaceState()로 히스토리 교체
+    form.submit();  // 일반 폼 제출로 변경하면 브라우저가 PRG 처리
+}
+```
+
+**개선 방안 2**: 클라이언트 중복 방지
+
+```javascript
+// static/js/script.js (개선)
+let isUploading = false;
+
+async function handleUpload(formData) {
+    // 이미 업로드 중이면 중단
+    if (isUploading) {
+        console.warn('이미 업로드가 진행 중입니다.');
+        return;
+    }
+
+    isUploading = true;
+    uploadButton.disabled = true;
+    uploadButton.textContent = '업로드 중...';
+
+    try {
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+
+        const data = await response.json();
+
+        // 성공 시 폼 초기화
+        uploadForm.reset();
+
+        // 히스토리 교체 (뒤로가기 방지)
+        history.replaceState(null, '', '/notes');
+
+        // 페이지 이동
+        window.location.href = `/view/${data.meeting_id}`;
+
+    } catch (error) {
+        console.error('업로드 실패:', error);
+        isUploading = false;
+        uploadButton.disabled = false;
+        uploadButton.textContent = '노트 생성';
+    }
+}
+```
+
+**개선 방안 3**: 서버 중복 방지 (Idempotency Key)
+
+```python
+# blueprints/upload.py (개선)
+import hashlib
+import time
+
+@upload_bp.route("/upload", methods=["POST"])
+@login_required
+def upload_and_process():
+    # 파일 해시 + 사용자 ID로 고유 키 생성
+    file = request.files['audio_file']
+    file_content = file.read()
+    file.seek(0)  # 포인터 리셋
+
+    idempotency_key = hashlib.sha256(
+        f"{session['user_id']}_{file.filename}_{len(file_content)}".encode()
+    ).hexdigest()
+
+    # Redis에서 최근 처리 여부 확인 (5분 이내)
+    cache_key = f"upload:{idempotency_key}"
+    cached_result = redis_client.get(cache_key)
+
+    if cached_result:
+        # 이미 처리된 요청
+        logger.warning(f"중복 업로드 요청 차단: {idempotency_key}")
+        cached_data = json.loads(cached_result)
+        return jsonify({
+            "success": True,
+            "meeting_id": cached_data['meeting_id'],
+            "message": "이미 처리된 요청입니다."
+        })
+
+    # 새로운 업로드 처리
+    meeting_id = upload_service.process_audio_upload(...)
+
+    # 결과 캐싱 (5분)
+    redis_client.setex(
+        cache_key,
+        300,  # 5분
+        json.dumps({"meeting_id": meeting_id})
+    )
+
+    return jsonify({"success": True, "meeting_id": meeting_id})
+```
+
+**개선 방안 4**: 토큰 기반 방지 (CSRF 토큰 활용)
+
+```python
+# app.py
+from flask_wtf.csrf import CSRFProtect
+
+csrf = CSRFProtect(app)
+```
+
+```html
+<!-- templates/index.html -->
+<form id="uploadForm" method="POST">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <input type="file" name="audio_file">
+    <button type="submit">노트 생성</button>
+</form>
+```
+
+```javascript
+// 폼 제출 후 토큰 무효화
+uploadForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData(uploadForm);
+    await fetch('/upload', {
+        method: 'POST',
+        body: formData
+    });
+
+    // 제출 후 폼 비활성화
+    uploadForm.querySelectorAll('input, button').forEach(el => {
+        el.disabled = true;
+    });
+});
+```
+
+**예상 작업 시간**: 2-3시간
+**효과**:
+- 중복 업로드 방지
+- 불필요한 API 비용 절감
+- 사용자 경험 개선 (실수로 인한 중복 방지)
+
+**우선순위**: Medium (데모/개인 사용에는 큰 문제 없으나, 다중 사용자 환경에서는 필수)
+
+---
+
 ## 🎯 리팩토링 우선순위 및 로드맵
 
 ### 🔴 Phase 1: 기초 인프라 (1주)

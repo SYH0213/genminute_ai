@@ -1,6 +1,7 @@
 
 import chromadb
 import os
+import re
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_chroma import Chroma
 from dotenv import load_dotenv
@@ -11,9 +12,6 @@ from langchain_classic.chains.query_constructor.base import AttributeInfo
 # 텍스트 분할을 위한 import (의미적 청킹 대안)
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import numpy as np
-
-# Gemini API import
-from google import genai
 
 
 # 이 파일의 상위 디렉토리에 있는 .env 파일을 찾아 로드
@@ -80,9 +78,9 @@ class VectorDBManager:
 
         print(f"✅ VectorDBManager for collections {list(self.COLLECTION_NAMES.values())} initialized.")
 
-    def _clean_text_with_gemini(self, formatted_text: str) -> str:
+    def _clean_text(self, formatted_text: str) -> str:
         """
-        Gemini 2.5 Flash를 사용해서 [Speaker X, MM:SS] 형식의 정보를 제거합니다.
+        정규표현식을 사용해서 [Speaker X, MM:SS] 형식의 정보를 제거합니다.
 
         Args:
             formatted_text (str): [Speaker X, MM:SS] 형식이 포함된 텍스트
@@ -90,43 +88,16 @@ class VectorDBManager:
         Returns:
             str: 순수한 대화 텍스트 (speaker와 시간 정보 제거)
         """
-        try:
-            api_key = os.environ.get("GOOGLE_API_KEY")
-            if not api_key:
-                print("⚠️ GOOGLE_API_KEY가 설정되지 않았습니다. 원본 텍스트를 반환합니다.")
-                return formatted_text
+        # [Speaker X, MM:SS] 패턴 제거
+        # [^,]+ : 쉼표가 아닌 문자 (숫자, "Unknown" 등)
+        # \d{2}:\d{2} : MM:SS 형식
+        pattern = r'\[Speaker [^,]+, \d{2}:\d{2}\]\s*'
+        cleaned_text = re.sub(pattern, '', formatted_text)
 
-            client = genai.Client(api_key=api_key)
+        # 빈 줄 제거
+        cleaned_text = '\n'.join(line for line in cleaned_text.split('\n') if line.strip())
 
-            prompt = f"""다음 텍스트에서 [Speaker X, MM:SS] 형식의 모든 정보를 제거하고, 순수한 대화 내용만 추출해주세요.
-각 줄은 하나의 발언을 나타냅니다. 발언 내용만 남기고 화자와 시간 정보는 모두 제거해주세요.
-
-입력 예시:
-[Speaker 0, 00:15] 안녕하세요. 오늘 회의를 시작하겠습니다.
-[Speaker 1, 00:30] 네, 반갑습니다.
-
-출력 예시:
-안녕하세요. 오늘 회의를 시작하겠습니다.
-네, 반갑습니다.
-
-처리할 텍스트:
-{formatted_text}
-
-순수한 대화 내용만 출력해주세요. 설명이나 추가 텍스트 없이 대화 내용만 반환하세요."""
-
-            response = client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt
-            )
-
-            cleaned_text = response.text.strip()
-            print(f"✅ Gemini로 텍스트 정제 완료 (원본 {len(formatted_text)}자 → 정제 {len(cleaned_text)}자)")
-            return cleaned_text
-
-        except Exception as e:
-            print(f"⚠️ Gemini 텍스트 정제 중 오류 발생: {e}")
-            print(f"📝 원본 텍스트를 사용합니다.")
-            return formatted_text
+        return cleaned_text.strip()
 
     def add_meeting_as_chunk(self, meeting_id, title, meeting_date, audio_file, segments):
         """
@@ -149,10 +120,10 @@ class VectorDBManager:
 
             print(f"📦 스마트 청킹으로 {len(chunks)}개의 청크 생성 완료")
 
-            # 2. Gemini로 각 청크의 텍스트 정제 (speaker와 시간 정보 제거)
-            print(f"🤖 Gemini 2.5 Flash로 텍스트 정제 중...")
+            # 2. 정규표현식으로 각 청크의 텍스트 정제 (speaker와 시간 정보 제거)
+            print(f"🔧 정규표현식으로 텍스트 정제 중...")
             for chunk in chunks:
-                chunk['text'] = self._clean_text_with_gemini(chunk['text'])
+                chunk['text'] = self._clean_text(chunk['text'])
 
             # 3. 각 청크를 Vector DB에 저장
             chunk_texts = []
@@ -210,9 +181,9 @@ class VectorDBManager:
 
             split_chunks = text_splitter.split_text(full_text)
 
-            # Gemini로 텍스트 정제
-            print(f"🤖 Gemini 2.5 Flash로 폴백 텍스트 정제 중...")
-            cleaned_chunks = [self._clean_text_with_gemini(chunk) for chunk in split_chunks]
+            # 정규표현식으로 텍스트 정제
+            print(f"🔧 정규표현식으로 폴백 텍스트 정제 중...")
+            cleaned_chunks = [self._clean_text(chunk) for chunk in split_chunks]
 
             chunk_texts = []
             chunk_metadatas = []
