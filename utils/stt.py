@@ -108,7 +108,29 @@ class STTManager:
                 raise ValueError("Gemini API가 빈 응답을 반환했습니다. 안전 필터링 또는 API 오류일 수 있습니다.")
 
             cleaned_response = response.text.strip().replace("```json", "").replace("```", "").strip()
-            result_list = json.loads(cleaned_response)
+
+            # JSON 파싱 시도
+            try:
+                result_list = json.loads(cleaned_response)
+            except json.JSONDecodeError as e:
+                print(f"❌ JSON 파싱 실패: {e}")
+                print(f"📝 오류 위치: line {e.lineno}, column {e.colno}")
+
+                # 응답 일부 출력 (디버깅용)
+                lines = cleaned_response.split('\n')
+                if e.lineno <= len(lines):
+                    error_line = lines[e.lineno - 1]
+                    print(f"📄 오류 발생 줄: {error_line}")
+                    if e.colno > 0:
+                        print(f"    {' ' * (e.colno - 1)}^ 여기")
+
+                # 전체 응답 저장 (디버깅용)
+                error_log_path = os.path.join(os.path.dirname(__file__), '..', 'gemini_error_response.txt')
+                with open(error_log_path, 'w', encoding='utf-8') as f:
+                    f.write(cleaned_response)
+                print(f"📁 전체 응답이 저장되었습니다: {error_log_path}")
+
+                raise ValueError(f"Gemini 응답이 올바른 JSON 형식이 아닙니다: {e}")
 
             normalized_segments = []
             for idx, segment in enumerate(result_list):

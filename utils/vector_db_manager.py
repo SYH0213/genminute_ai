@@ -580,6 +580,40 @@ class VectorDBManager:
             collection.delete(where={}) # deletes all items
             print(f"✅ All items deleted from '{db_type}' collection.")
 
+    def _get_audio_file_from_vector_db(self, meeting_id):
+        """
+        Vector DB에서 meeting_id로 audio_file을 조회합니다.
+        SQLite에서 조회 실패 시 폴백으로 사용됩니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+
+        Returns:
+            str or None: audio_file 이름 또는 None
+        """
+        try:
+            import sqlite3
+            conn = sqlite3.connect(os.path.join(os.path.dirname(__file__), '..', 'database', 'vector_db', 'chroma.sqlite3'))
+            cursor = conn.cursor()
+
+            cursor.execute('''
+                SELECT string_value
+                FROM embedding_metadata
+                WHERE key = "audio_file" AND id IN (
+                    SELECT DISTINCT id FROM embedding_metadata
+                    WHERE key = "meeting_id" AND string_value = ?
+                )
+                LIMIT 1
+            ''', (meeting_id,))
+
+            result = cursor.fetchone()
+            conn.close()
+
+            return result[0] if result else None
+        except Exception as e:
+            print(f"⚠️ Vector DB에서 audio_file 조회 실패: {e}")
+            return None
+
     def _delete_all_meeting_data(self, meeting_id):
         """
         meeting_id로 모든 회의 데이터를 삭제합니다.
@@ -610,13 +644,20 @@ class VectorDBManager:
         print(f"   • 미디어 파일 (오디오/비디오, uploads 폴더)")
         print("=" * 70)
 
-        # 1. meeting_id로 오디오 파일명 조회
+        # 1. meeting_id로 오디오 파일명 조회 (SQLite 우선, 실패 시 Vector DB)
         audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
 
         if not audio_file:
-            raise ValueError(f"meeting_id '{meeting_id}'에 해당하는 회의를 찾을 수 없습니다.")
+            print("⚠️ SQLite에서 audio_file을 찾을 수 없습니다. Vector DB에서 조회 시도...")
+            audio_file = self._get_audio_file_from_vector_db(meeting_id)
 
-        print(f"📄 미디어 파일명: {audio_file}")
+        if not audio_file:
+            print("⚠️ audio_file을 찾을 수 없습니다. 파일 삭제를 건너뜁니다.")
+            print("   (SQLite와 Vector DB 삭제는 계속 진행됩니다)")
+            audio_file = None  # 파일 삭제 단계에서 처리
+        else:
+            print(f"📄 미디어 파일명: {audio_file}")
+
         print("=" * 70)
 
         # 2. SQLite DB 삭제
@@ -716,29 +757,34 @@ class VectorDBManager:
         print(f"\n📊 [미디어 파일 삭제 검증 시작] meeting_id = {meeting_id}")
         print("=" * 70)
 
-        audio_path = os.path.join(self.upload_folder, audio_file)
         audio_deleted = False
 
-        if os.path.exists(audio_path):
-            print(f"[삭제 전] 미디어 파일 존재: {audio_file}")
-            print(f"           경로: {audio_path}")
-            print("-" * 70)
+        if audio_file:
+            audio_path = os.path.join(self.upload_folder, audio_file)
 
-            os.remove(audio_path)
-            print(f"[삭제 수행] 미디어 파일 삭제 시도: {audio_file}")
+            if os.path.exists(audio_path):
+                print(f"[삭제 전] 미디어 파일 존재: {audio_file}")
+                print(f"           경로: {audio_path}")
+                print("-" * 70)
 
-            print("-" * 70)
+                os.remove(audio_path)
+                print(f"[삭제 수행] 미디어 파일 삭제 시도: {audio_file}")
 
-            if not os.path.exists(audio_path):
-                print(f"[삭제 후] 미디어 파일 없음")
-                print(f"✅ 미디어 파일 삭제 검증 성공: 파일이 삭제되었습니다.")
-                audio_deleted = True
+                print("-" * 70)
+
+                if not os.path.exists(audio_path):
+                    print(f"[삭제 후] 미디어 파일 없음")
+                    print(f"✅ 미디어 파일 삭제 검증 성공: 파일이 삭제되었습니다.")
+                    audio_deleted = True
+                else:
+                    print(f"[삭제 후] 미디어 파일 여전히 존재")
+                    print(f"⚠️ 미디어 파일 삭제 검증 실패: 파일이 남아있습니다.")
             else:
-                print(f"[삭제 후] 미디어 파일 여전히 존재")
-                print(f"⚠️ 미디어 파일 삭제 검증 실패: 파일이 남아있습니다.")
+                print(f"[삭제 전] 미디어 파일 없음: {audio_file}")
+                print(f"ℹ️ 미디어 파일이 존재하지 않습니다.")
         else:
-            print(f"[삭제 전] 미디어 파일 없음: {audio_file}")
-            print(f"ℹ️ 미디어 파일이 존재하지 않습니다.")
+            print(f"[건너뜀] audio_file 정보 없음")
+            print(f"ℹ️ audio_file을 찾을 수 없어 파일 삭제를 건너뜁니다.")
 
         print("=" * 70)
 
@@ -748,6 +794,7 @@ class VectorDBManager:
         print("=" * 70)
         print(f"✓ SQLite meeting_dialogues: {deleted_sqlite['dialogues']}개 삭제")
         print(f"✓ SQLite meeting_minutes: {deleted_sqlite['minutes']}개 삭제")
+        print(f"✓ SQLite meeting_shares: {deleted_sqlite.get('shares', 0)}개 삭제")
         print(f"✓ Vector DB meeting_chunk: {deleted_chunks_count}개 삭제")
         print(f"✓ Vector DB meeting_subtopic: {deleted_subtopic_count}개 삭제")
         print(f"✓ 미디어 파일 (오디오/비디오): {'삭제됨' if audio_deleted else '없음/실패'}")
@@ -759,6 +806,7 @@ class VectorDBManager:
             "deleted": {
                 "sqlite_dialogues": deleted_sqlite["dialogues"],
                 "sqlite_minutes": deleted_sqlite["minutes"],
+                "sqlite_shares": deleted_sqlite.get("shares", 0),
                 "vector_chunks": deleted_chunks_count,
                 "vector_subtopic": deleted_subtopic_count,
                 "audio_file": audio_file if audio_deleted else None

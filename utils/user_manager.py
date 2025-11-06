@@ -180,11 +180,11 @@ def can_access_meeting(user_id: int, meeting_id: str) -> bool:
 
 def get_user_meetings(user_id: int) -> List[Dict]:
     """
-    사용자가 접근 가능한 모든 회의 목록 조회
+    사용자가 작성한 회의 목록 조회 (본인 노트만)
 
     조건:
     - Admin: 모든 노트
-    - User: 본인이 생성한 노트 + 공유받은 노트
+    - User: 본인이 생성한 노트만 (공유받은 노트는 get_shared_meetings()에서 조회)
     """
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -204,25 +204,19 @@ def get_user_meetings(user_id: int) -> List[Dict]:
                 ORDER BY meeting_date DESC
             """)
         else:
-            # User: 본인 노트 + 공유받은 노트
+            # User: 본인이 작성한 노트만
             cursor.execute("""
-                SELECT DISTINCT
-                    md.meeting_id,
-                    md.title,
-                    MAX(md.meeting_date) as meeting_date,
+                SELECT
+                    meeting_id,
+                    title,
+                    MAX(meeting_date) as meeting_date,
                     (SELECT audio_file FROM meeting_dialogues WHERE meeting_id = md.meeting_id LIMIT 1) as audio_file,
-                    (SELECT owner_id FROM meeting_dialogues WHERE meeting_id = md.meeting_id LIMIT 1) as owner_id,
-                    CASE
-                        WHEN (SELECT owner_id FROM meeting_dialogues WHERE meeting_id = md.meeting_id LIMIT 1) = ? THEN 'owner'
-                        ELSE 'shared'
-                    END as access_type
+                    (SELECT owner_id FROM meeting_dialogues WHERE meeting_id = md.meeting_id LIMIT 1) as owner_id
                 FROM meeting_dialogues md
-                LEFT JOIN meeting_shares s ON md.meeting_id = s.meeting_id
                 WHERE (SELECT owner_id FROM meeting_dialogues WHERE meeting_id = md.meeting_id LIMIT 1) = ?
-                   OR s.shared_with_user_id = ?
-                GROUP BY md.meeting_id
+                GROUP BY meeting_id
                 ORDER BY meeting_date DESC
-            """, (user_id, user_id, user_id))
+            """, (user_id,))
 
         meetings = cursor.fetchall()
         return [dict(meeting) for meeting in meetings]

@@ -1,6 +1,6 @@
 # Minute AI - 인수인계 문서
 
-## 📅 마지막 업데이트: 2025-11-06
+## 📅 마지막 업데이트: 2025-01-06
 
 ---
 
@@ -52,8 +52,15 @@ minute_ai/
 │       ├── script.js          # 전역 스크립트 (챗봇 로직 포함)
 │       └── viewer.js          # 뷰어 인터랙션
 ├── uploads/                    # 업로드된 오디오 파일
+├── cleanup_orphan_data.py     # 고아 데이터 정리 스크립트 (NEW: 2025-01-06)
 ├── FLOWCHART.md               # 시스템 아키텍처 문서
-└── next.md                    # 이 문서
+├── 발표전_필수_테스트.md      # 발표 전 체크리스트 (NEW: 2025-01-06)
+├── 발표_PPT_내용.md           # PPT 슬라이드 구성안 (NEW: 2025-01-06)
+├── 발표_PPT_개발파트.md       # PPT 개발 파트 재구성 (NEW: 2025-01-06)
+├── 촬영(Filming).md           # 데모 영상 촬영 가이드 (NEW: 2025-01-06)
+├── 고아데이터_버그_수정_완료.md  # 버그 수정 보고서 (NEW: 2025-01-06)
+├── JSON_파싱_오류_해결_가이드.md # JSON 트러블슈팅 (NEW: 2025-01-06)
+└── next.md                    # 이 문서 (인수인계 문서)
 ```
 
 ---
@@ -433,6 +440,343 @@ INSERT INTO meeting_dialogues
 (meeting_id, meeting_date, speaker_label, start_time, segment, confidence, audio_file, title, owner_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ```
+
+---
+
+## 🆕 최근 구현 내용 (2025-01-06)
+
+### 1️⃣ 공유 노트 조회 기능 (완료)
+
+**구현 내용**:
+- 왼쪽 메뉴에 "공유 노트 보기" 메뉴 추가
+- 본인 소유 노트와 공유받은 노트를 구분하여 표시
+
+**수정된 파일**:
+- `templates/layout.html:20` - "공유 노트 보기" 메뉴 항목 추가
+  ```html
+  <li class="nav-item">
+      <a href="/shared_notes">
+          <i class="fa-solid fa-share-nodes"></i>
+          <span>공유 노트 보기</span>
+      </a>
+  </li>
+  ```
+
+- `app.py:495-528` - `/shared_notes` 라우트 추가
+  ```python
+  @app.route('/shared_notes')
+  @login_required
+  def shared_notes():
+      user_id = session.get('user_id')
+      shared_meetings = db_manager.get_shared_meetings(user_id)
+      return render_template('shared_notes.html', meetings=shared_meetings)
+  ```
+
+- `templates/shared_notes.html` - 공유 노트 목록 페이지 생성
+- `utils/db_manager.py` - `get_shared_meetings()` 함수 추가
+
+**특징**:
+- ✅ 공유받은 노트만 별도로 조회
+- ✅ 공유한 사람(owner) 이메일 표시
+- ✅ 본인 소유 노트는 표시 안 됨
+
+---
+
+### 2️⃣ 데이터 정합성 버그 수정 (완료)
+
+**배경**: uploads 폴더에 3개 파일이 있는데 노트는 1개만 표시되는 문제 발견
+
+**근본 원인**:
+- `vector_db_manager.py:614-617`의 삭제 로직 버그
+- SQLite에서 audio_file 조회 실패 시 ValueError 발생
+- Vector DB와 파일 삭제가 실행되지 않음
+- 결과: 고아 데이터(orphan data) 발생
+
+**해결 방법 1: 임시 정리 스크립트**
+
+**새로 생성된 파일**:
+- `cleanup_orphan_data.py` - 고아 데이터 자동 정리 스크립트
+
+**실행 결과**:
+```bash
+📊 Vector DB에서 2개 meeting_id 삭제 중...
+  ✅ 1f0aab5c-d5f8-4524-a200-b54be1c0074c: 92개 메타데이터 삭제
+  ✅ f6f1f052-40eb-4dc1-aa68-97df60dcda26: 116개 메타데이터 삭제
+
+📂 uploads 폴더에서 2개 파일 삭제 중...
+  ✅ 4-_251105_155055.m4a 삭제 완료 (5.54 MB)
+  ✅ meetingV3.mp4 삭제 완료 (107.72 MB)
+
+🎉 고아 데이터 정리 완료!
+```
+
+**해결 방법 2: 근본 수정**
+
+**수정된 파일**: `utils/vector_db_manager.py`
+
+1. **새 함수 추가** (lines 583-615):
+   ```python
+   def _get_audio_file_from_vector_db(self, meeting_id):
+       """
+       Vector DB에서 meeting_id로 audio_file을 조회합니다.
+       SQLite에서 조회 실패 시 폴백으로 사용됩니다.
+       """
+       # Vector DB의 embedding_metadata 테이블에서 직접 조회
+   ```
+
+2. **audio_file 조회 로직 개선** (lines 647-661):
+   ```python
+   # OLD CODE (버그):
+   audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
+   if not audio_file:
+       raise ValueError(f"meeting_id '{meeting_id}'에 해당하는 회의를 찾을 수 없습니다.")
+
+   # NEW CODE (수정):
+   audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
+
+   if not audio_file:
+       print("⚠️ SQLite에서 audio_file을 찾을 수 없습니다. Vector DB에서 조회 시도...")
+       audio_file = self._get_audio_file_from_vector_db(meeting_id)
+
+   if not audio_file:
+       print("⚠️ audio_file을 찾을 수 없습니다. 파일 삭제를 건너뜁니다.")
+       print("   (SQLite와 Vector DB 삭제는 계속 진행됩니다)")
+       audio_file = None
+   ```
+
+3. **파일 삭제 로직 개선** (lines 756-789):
+   ```python
+   # audio_file이 None인 경우에도 정상 처리
+   if audio_file:
+       audio_path = os.path.join(self.upload_folder, audio_file)
+       if os.path.exists(audio_path):
+           os.remove(audio_path)
+           print(f"✅ 미디어 파일 삭제 검증 성공")
+       else:
+           print(f"ℹ️ 미디어 파일이 존재하지 않습니다.")
+   else:
+       print(f"[건너뜀] audio_file 정보 없음")
+   ```
+
+**개선 효과**:
+- ✅ SQLite 조회 실패 시 Vector DB에서 폴백 조회
+- ✅ 조회 실패해도 ValueError 발생 안 함
+- ✅ SQLite와 Vector DB 삭제는 항상 수행됨
+- ✅ 고아 데이터 발생 방지
+
+**문서화**:
+- `고아데이터_버그_수정_완료.md` - 상세 보고서 작성
+
+---
+
+### 3️⃣ JSON 파싱 오류 처리 개선 (완료)
+
+**배경**: Gemini STT API가 간헐적으로 잘못된 JSON 반환
+
+**오류 예시**:
+```
+json.decoder.JSONDecodeError: Expecting ',' delimiter: line 160 column 29 (char 5862)
+```
+
+**수정된 파일**: `utils/stt.py`
+
+**변경 사항** (lines 110-133):
+```python
+# JSON 파싱 시도
+try:
+    result_list = json.loads(cleaned_response)
+except json.JSONDecodeError as e:
+    print(f"❌ JSON 파싱 실패: {e}")
+    print(f"📝 오류 위치: line {e.lineno}, column {e.colno}")
+
+    # 오류 발생 줄 표시
+    lines = cleaned_response.split('\n')
+    if e.lineno <= len(lines):
+        error_line = lines[e.lineno - 1]
+        print(f"📄 오류 발생 줄: {error_line}")
+        if e.colno > 0:
+            print(f"    {' ' * (e.colno - 1)}^ 여기")
+
+    # 전체 응답 저장 (디버깅용)
+    error_log_path = os.path.join(os.path.dirname(__file__), '..', 'gemini_error_response.txt')
+    with open(error_log_path, 'w', encoding='utf-8') as f:
+        f.write(cleaned_response)
+    print(f"📁 전체 응답이 저장되었습니다: {error_log_path}")
+
+    raise ValueError(f"Gemini 응답이 올바른 JSON 형식이 아닙니다: {e}")
+```
+
+**개선 효과**:
+- ✅ 오류 위치 정확히 표시 (line, column)
+- ✅ 문제가 된 줄 출력
+- ✅ 전체 응답을 `gemini_error_response.txt`에 저장
+- ✅ 수동 수정 가능
+
+**문서화**:
+- `JSON_파싱_오류_해결_가이드.md` - 트러블슈팅 가이드 작성
+  - 재시도 방법
+  - 일반적인 JSON 오류 패턴
+  - 수동 수정 방법
+  - 자동 수정 로직 예시 코드
+
+---
+
+### 4️⃣ [cite: N] 인용 시스템 설명
+
+**배경**: 요약 생성 시 `[cite: 1]`, `[cite: 2]` 형식의 인용 출처 이해
+
+**인용 생성 프로세스**:
+
+1. **프롬프트 지시** (`utils/stt.py:154-186`):
+   ```python
+   def subtopic_generate(self, title: str, transcript_text: str):
+       prompt_text = f"""
+       9. 정확한 인용 (필수):
+           * 요약된 모든 문장이나 구절 끝에는 반드시 원본 스크립트의 번호를
+             형식으로 변환하여 삽입해야 합니다.
+           * 하나의 글머리 기호가 여러 소스의 내용을 종합한 경우,
+             모든 관련 소스 번호를 인용해야 합니다. (예: [cite: 1, 2])
+
+       {transcript_text}
+       """
+   ```
+
+2. **transcript_text 생성** (`app.py:308`):
+   ```python
+   transcript_text = " ".join([row['segment'] for row in all_segments])
+   ```
+   → **중요**: 실제로는 번호가 없는 단순 텍스트 연결
+
+3. **Gemini AI의 자동 번호 매핑**:
+   - Gemini가 긴 스크립트를 내부적으로 문장/의미 단위로 분석
+   - 각 단위에 1, 2, 3... 번호를 자동 매핑
+   - 요약 생성 시 참조한 번호를 `[cite: N]` 형식으로 삽입
+
+**실제 예시**:
+
+**입력** (번호 없음):
+```
+"지구 역사상 가장 지루했던 10억년. 약 18억년 부터 8억년 사이에는
+추운 시기가 전혀 없었다..."
+```
+
+**Gemini 출력**:
+```markdown
+### 지구 기후의 역사적 변화와 현황
+* 약 18억 년 전부터 8억 년 전까지는 추운 시기가 없었던,
+  이른바 '지루한 10억 년'이라 불리는 기간이 존재했음 [cite: 1, 5]
+* 6,500만 년 전부터 현재까지 지구의 온도는 지속적으로 하락해 왔으며,
+  인류는 지구 역사상 상대적으로 추운 시기에 살고 있음 [cite: 6, 7]
+```
+
+**[cite: N]의 실제 의미**:
+- ❌ 프로젝트 코드에 매핑 정보 없음
+- ❌ 클릭해서 원본으로 이동하는 기능 없음
+- ✅ Gemini가 내부적으로 매긴 참조 번호
+- ✅ "이 요약은 원본에 근거했다"는 시각적 표시 역할
+
+**실제 출처 추적**:
+- Vector DB의 `meeting_chunk` 컬렉션에 실제 청크 저장
+- 각 청크는 `start_time`, `end_time`, `speaker_count` 메타데이터 보유
+- 이것이 검증 가능한 실제 출처 정보
+
+---
+
+### 5️⃣ 발표 준비 문서 작성 (완료)
+
+**생성된 문서**:
+1. `발표전_필수_테스트.md` - 발표 전 체크리스트
+2. `발표_PPT_내용.md` - PPT 슬라이드 구성안
+3. `촬영(Filming).md` - 데모 영상 촬영 가이드
+4. `고아데이터_버그_수정_완료.md` - 버그 수정 보고서
+5. `JSON_파싱_오류_해결_가이드.md` - JSON 오류 트러블슈팅
+
+**테스트 항목**:
+- ✅ 로그인 (일반/Admin)
+- ✅ 파일 업로드 (오디오, 비디오)
+- ✅ STT 및 요약 생성
+- ✅ 회의록 생성
+- ✅ 챗봇 질의응답
+- ✅ 노트 삭제
+- ✅ 공유 기능
+
+---
+
+### 6️⃣ 공유 노트 조회 버그 수정 (완료)
+
+**배경**: User 계정의 "노트 보기"에 Admin이 공유한 노트가 표시되는 문제
+
+**근본 원인**:
+- `utils/user_manager.py:get_user_meetings()` 함수가 본인 노트 + 공유받은 노트를 모두 반환
+- 설계 의도는 "노트 보기"는 본인 노트만, "공유 노트 보기"는 공유받은 노트만 분리
+
+**수정된 파일**: `utils/user_manager.py:181-225`
+
+**변경 사항**:
+```python
+# 기존 (잘못된 구현):
+cursor.execute("""
+    ...
+    WHERE owner_id = ?
+       OR s.shared_with_user_id = ?  # ← 공유받은 노트도 포함
+    ...
+""", (user_id, user_id, user_id))
+
+# 수정 (올바른 구현):
+cursor.execute("""
+    ...
+    WHERE owner_id = ?  # ← 본인 노트만
+    ...
+""", (user_id,))
+```
+
+**제거된 코드**:
+- `LEFT JOIN meeting_shares s` (불필요)
+- `access_type` CASE 문 (불필요)
+- 파라미터 3개 → 1개로 단순화
+
+**수정 후 동작**:
+| 계정 | 메뉴 | 표시 내용 |
+|------|------|----------|
+| User | 📂 노트 보기 | 본인이 작성한 노트만 |
+| User | 🔗 공유 노트 보기 | 공유받은 노트만 |
+| Admin | 📂 노트 보기 | 모든 노트 |
+
+---
+
+### 7️⃣ 발표 PPT 개발 파트 재구성 (완료)
+
+**배경**: 기존 발표_PPT_내용.md가 너무 상세해서 실제 발표에 사용하기 어려움
+
+**생성된 파일**: `발표_PPT_개발파트.md`
+
+**구성 내용**:
+- **슬라이드 1: 기술 스택**
+  - Frontend, Backend, AI/ML, Database, Authentication, Infrastructure
+  - 각 기술 선택 이유와 특징
+  - 2가지 레이아웃 옵션 제공
+
+- **슬라이드 2: 시스템 아키텍처**
+  - 전체 시스템 구조 다이어그램
+  - 3가지 데이터 흐름 (STT → 요약 → 챗봇)
+  - 간소화 버전 / 3층 구조 버전
+
+- **슬라이드 3: 서비스 플로우 차트**
+  - 사용자 관점의 6단계 플로우
+  - 각 단계별 상세 액션 및 소요 시간
+  - 세로 플로우 / 가로 타임라인 버전
+
+- **슬라이드 4 (선택): 핵심 기능 처리 흐름**
+  - STT, 요약, 챗봇의 기술적 처리 과정
+  - 각 기능별 소요 시간 명시
+
+**추가 제공 자료**:
+- 각 슬라이드별 발표 스크립트 예시
+- 강조해야 할 포인트 명시
+- PPT 디자인 팁
+- 예상 질문 및 답변
+
+**권장 구성**: 4개 슬라이드 (기술스택 + 아키텍처 + 플로우 + 처리흐름)
 
 ---
 
@@ -970,11 +1314,14 @@ ADMIN_EMAILS = [
 | 사용자 인증 | ✅ 완료 | Firebase Google OAuth |
 | 권한 관리 | ✅ 완료 | owner_id 기반 접근 제어 |
 | 노트 공유 | ✅ 완료 | 이메일 기반 공유 |
+| 공유 노트 조회 | ✅ 완료 | 별도 메뉴 (2025-01-06) |
 | 비디오 지원 | ✅ 완료 | MP4 → WAV 자동 변환 |
 | 화자별 분석 | ✅ 완료 | 점유율 바 차트 |
 | UI/UX | ✅ 완료 | Blue 테마, Font Awesome |
+| 데이터 정합성 | ✅ 완료 | 고아 데이터 방지 (2025-01-06) |
+| JSON 오류 처리 | ✅ 완료 | 상세 로그 + 파일 저장 (2025-01-06) |
 
-**전체 완성도: 100%** - 프로덕션 레벨 완성
+**전체 완성도: 100%** - 프로덕션 레벨 완성 + 버그 수정 완료
 
 ---
 
@@ -1061,9 +1408,13 @@ ADMIN_EMAILS = [
 - **문제**: 부분 문자열 매칭 불가 (정확한 일치만 가능)
 - **해결 방법**: 검색 후 Python에서 후처리 필터링
 
-### 2. Gemini API Rate Limit
-- **문제**: 분당 요청 수 제한 있음 (STT, 요약, 회의록 생성 모두 Gemini 사용)
-- **해결 방법**: 에러 핸들링 및 재시도 로직 필요
+### 2. Gemini API 간헐적 오류
+- **문제 1**: 분당 요청 수 제한 있음 (Rate Limit)
+- **문제 2**: 간헐적으로 잘못된 JSON 반환 (JSON 파싱 오류)
+- **해결 방법**:
+  - Rate Limit: 에러 핸들링 및 재시도 로직 필요
+  - JSON 오류: ✅ **해결됨** - 상세 로그 + 파일 저장 (`utils/stt.py:110-133`)
+  - 대응 가이드: `JSON_파싱_오류_해결_가이드.md` 참조
 
 ### 3. 대용량 오디오 파일 처리
 - **문제**: Gemini API 타임아웃 가능성, MP4 변환 시간 소요
@@ -1074,6 +1425,14 @@ ADMIN_EMAILS = [
 - **현황**: Flask 멀티스레딩으로 기본 처리, SQLite write lock 가능성
 - **해결 방법**: 큐 시스템 도입 고려 (Celery + Redis)
 
+### 5. ~~고아 데이터 발생~~ (✅ **해결됨**)
+- ~~**문제**: 삭제 실패 시 Vector DB와 파일이 남아있는 문제~~
+- **해결 (2025-01-06)**:
+  - 폴백 메커니즘 구현 (SQLite → Vector DB 조회)
+  - 삭제 로직 개선 (ValueError 발생 안 함)
+  - 정리 스크립트: `cleanup_orphan_data.py`
+  - 상세 보고서: `고아데이터_버그_수정_완료.md`
+
 ---
 
 ## 📚 참고 문서 및 중요 코드 위치
@@ -1083,16 +1442,20 @@ ADMIN_EMAILS = [
 
 ### 핵심 로직 위치
 - **STT 처리**: `utils/stt.py:28-114` (`transcribe_audio()` - Gemini 2.5 Pro 멀티모달)
+- **JSON 오류 처리**: `utils/stt.py:110-133` (JSONDecodeError 상세 로그)
+- **요약 생성**: `utils/stt.py:154-186` (`subtopic_generate()` - [cite: N] 포함)
 - **Smart Chunking**: `utils/vector_db_manager.py:174-252` (`_create_smart_chunks()`)
 - **Gemini 텍스트 정제**: `utils/vector_db_manager.py:79-125` (`_clean_text_with_gemini()`)
 - **검색 로직**: `utils/vector_db_manager.py:312-407` (`search()`)
 - **챗봇 로직**: `utils/chat_manager.py:192-259` (`process_query()`)
 - **삭제 로직**: `utils/vector_db_manager.py:612-779` (`_delete_all_meeting_data()`)
+  - **폴백 조회**: `utils/vector_db_manager.py:583-615` (`_get_audio_file_from_vector_db()`)
 - **삭제 검증**: `utils/db_manager.py:201-281` (`delete_meeting_by_id()`)
 - **Firebase 인증**: `utils/firebase_auth.py` (`verify_id_token()`)
-- **사용자 관리**: `utils/user_manager.py` (`get_or_create_user()`, `can_access_meeting()`)
+- **사용자 관리**: `utils/user_manager.py` (`get_or_create_user()`, `can_access_meeting()`, `share_meeting()`)
 - **비디오 변환**: `app.py:74-118` (`convert_video_to_audio()`)
 - **화자 분석**: `utils/analysis.py` (`calculate_speaker_share()`)
+- **고아 데이터 정리**: `cleanup_orphan_data.py` (수동 실행 스크립트)
 
 ### UI 구성
 - **로그인 페이지**: `templates/login.html` (Firebase OAuth)
@@ -1166,8 +1529,20 @@ templates/viewer.html      # 타임스탬프 점프 로직
 ---
 
 **작성자**: Claude Code
-**마지막 업데이트**: 2025-11-06
-**주요 업데이트**:
+**마지막 업데이트**: 2025-01-06
+
+**주요 업데이트 (2025-01-06)**:
+- ✅ 공유 노트 조회 기능 (왼쪽 메뉴에 "공유 노트 보기" 추가)
+- ✅ 데이터 정합성 버그 수정 (고아 데이터 문제 해결)
+  - cleanup_orphan_data.py 스크립트 작성
+  - vector_db_manager.py 삭제 로직 개선 (폴백 메커니즘)
+- ✅ JSON 파싱 오류 처리 개선 (상세 로그 + 파일 저장)
+- ✅ [cite: N] 인용 시스템 설명 문서화
+- ✅ 발표 준비 문서 작성 (테스트 가이드, PPT 구성안, 촬영 가이드)
+- ✅ 공유 노트 조회 버그 수정 (get_user_meetings 함수 - 본인 노트만 표시)
+- ✅ 발표 PPT 개발 파트 재구성 (기술스택, 아키텍처, 플로우 차트 중심)
+
+**이전 주요 업데이트 (2025-11-06)**:
 - ✅ Firebase Authentication 통합 (Google OAuth)
 - ✅ 사용자 권한 관리 시스템 (owner_id, sharing)
 - ✅ 챗봇 UI 개편 (플로팅 버튼 → 사이드 탭)
@@ -1178,7 +1553,14 @@ templates/viewer.html      # 타임스탬프 점프 로직
 - ✅ 화자별 점유율 기능
 - ✅ STT 모델 정보 정정 (Whisper → Gemini 2.5 Pro)
 
-**다음 작업 우선순위**:
+**발표 전 필수 확인사항**:
+1️⃣ 전체 기능 테스트 (`발표전_필수_테스트.md` 참조)
+2️⃣ 데이터 정합성 확인 (고아 데이터 없는지)
+3️⃣ JSON 파싱 오류 대응 방법 숙지
+4️⃣ 데모 영상 촬영 (`촬영(Filming).md` 참조)
+
+**향후 개선 우선순위** (발표 이후):
 1️⃣ 일괄 삭제 프로그레스 모달
 2️⃣ 챗봇 추천 질문 기능
 3️⃣ 챗봇 출처 링크 (타임스탬프 점프)
+4️⃣ [cite: N] 클릭 시 원본 이동 기능 (실제 매핑 필요)
