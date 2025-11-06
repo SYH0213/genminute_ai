@@ -12,7 +12,7 @@ class DatabaseManager:
         conn.row_factory = sqlite3.Row
         return conn
 
-    def save_stt_to_db(self, segments, audio_filename, title, meeting_date=None):
+    def save_stt_to_db(self, segments, audio_filename, title, meeting_date=None, owner_id=None):
         """
         음성 인식 결과를 데이터베이스에 저장합니다.
 
@@ -22,6 +22,7 @@ class DatabaseManager:
             title (str): 회의 제목
             meeting_date (str, optional): 회의 일시 (형식: "YYYY-MM-DD HH:MM:SS")
                                           제공되지 않으면 현재 시간 사용
+            owner_id (int, optional): 회의 소유자 ID
 
         Returns:
             str: 생성된 meeting_id
@@ -37,15 +38,15 @@ class DatabaseManager:
         for segment in segments:
             cursor.execute("""
                 INSERT INTO meeting_dialogues
-                (meeting_id, meeting_date, speaker_label, start_time, segment, confidence, audio_file, title)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                (meeting_id, meeting_date, speaker_label, start_time, segment, confidence, audio_file, title, owner_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
             """, (
                 meeting_id, meeting_date, str(segment['speaker']), segment['start_time'],
-                segment['text'], segment['confidence'], audio_filename, title
+                segment['text'], segment['confidence'], audio_filename, title, owner_id
             ))
         conn.commit()
         conn.close()
-        print(f"✅ DB 저장 완료: meeting_id={meeting_id}, meeting_date={meeting_date}")
+        print(f"✅ DB 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}, meeting_date={meeting_date}")
         return meeting_id
 
     def get_meeting_by_id(self, meeting_id):
@@ -78,7 +79,7 @@ class DatabaseManager:
         conn.close()
         return [dict(row) for row in rows]
 
-    def save_minutes(self, meeting_id, title, meeting_date, minutes_content):
+    def save_minutes(self, meeting_id, title, meeting_date, minutes_content, owner_id=None):
         """
         생성된 회의록을 데이터베이스에 저장합니다.
 
@@ -87,6 +88,7 @@ class DatabaseManager:
             title (str): 회의 제목
             meeting_date (str): 회의 일시
             minutes_content (str): 회의록 내용 (마크다운 형식)
+            owner_id (int, optional): 회의 소유자 ID
 
         Returns:
             bool: 저장 성공 여부
@@ -102,7 +104,8 @@ class DatabaseManager:
                 meeting_date TEXT NOT NULL,
                 minutes_content TEXT NOT NULL,
                 created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                owner_id INTEGER
             )
         """)
 
@@ -116,17 +119,17 @@ class DatabaseManager:
             # 기존 회의록 업데이트
             cursor.execute("""
                 UPDATE meeting_minutes
-                SET title = ?, meeting_date = ?, minutes_content = ?, updated_at = ?
+                SET title = ?, meeting_date = ?, minutes_content = ?, updated_at = ?, owner_id = ?
                 WHERE meeting_id = ?
-            """, (title, meeting_date, minutes_content, created_at, meeting_id))
-            print(f"✅ 회의록 업데이트 완료: meeting_id={meeting_id}")
+            """, (title, meeting_date, minutes_content, created_at, owner_id, meeting_id))
+            print(f"✅ 회의록 업데이트 완료: meeting_id={meeting_id}, owner_id={owner_id}")
         else:
             # 새 회의록 저장
             cursor.execute("""
-                INSERT INTO meeting_minutes (meeting_id, title, meeting_date, minutes_content, created_at, updated_at)
-                VALUES (?, ?, ?, ?, ?, ?)
-            """, (meeting_id, title, meeting_date, minutes_content, created_at, created_at))
-            print(f"✅ 회의록 저장 완료: meeting_id={meeting_id}")
+                INSERT INTO meeting_minutes (meeting_id, title, meeting_date, minutes_content, created_at, updated_at, owner_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """, (meeting_id, title, meeting_date, minutes_content, created_at, created_at, owner_id))
+            print(f"✅ 회의록 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}")
 
         conn.commit()
         conn.close()

@@ -16,7 +16,7 @@ from utils.validation import validate_title, parse_meeting_date
 from utils.chat_manager import ChatManager
 from utils.analysis import calculate_speaker_share
 from utils.firebase_auth import initialize_firebase, verify_id_token
-from utils.user_manager import get_or_create_user, get_user_by_id, can_access_meeting, get_user_meetings, share_meeting, get_shared_users, remove_share, get_user_accessible_meeting_ids
+from utils.user_manager import get_or_create_user, get_user_by_id, can_access_meeting, get_user_meetings, share_meeting, get_shared_users, remove_share, get_user_accessible_meeting_ids, is_admin
 from utils.decorators import login_required, admin_required
 
 # --- 환경 변수 로드 ---
@@ -116,6 +116,23 @@ def convert_video_to_audio(video_path, audio_path):
     except Exception as e:
         print(f"❌ 비디오 변환 중 오류 발생: {e}")
         return False
+
+
+# --- Context Processor (모든 템플릿에서 사용 가능한 변수) ---
+@app.context_processor
+def inject_user_info():
+    """모든 템플릿에 사용자 정보를 주입"""
+    if 'user_id' in session:
+        user_id = session['user_id']
+        is_user_admin = is_admin(user_id)
+        return {
+            'current_user_id': user_id,
+            'is_admin': is_user_admin
+        }
+    return {
+        'current_user_id': None,
+        'is_admin': False
+    }
 
 
 # --- Flask 라우트 ---

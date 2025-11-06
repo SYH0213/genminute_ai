@@ -2,7 +2,7 @@
     --nav-bg: #2c3e50;
     --nav-text: #ecf0f1;
     --nav-hover: #34495e;
-    --content-bg: #ffffff;
+    --content-bg: #f8f9fa;
     --sidebar-bg: #f8f9fa;
     --text-color: #333;
     --border-color: #e0e0e0;
@@ -67,49 +67,55 @@ body {
 .nav-header { padding: 0 1.5rem; margin-top: 1.5rem; margin-bottom: 0.5rem; font-size: 0.8rem; font-weight: bold; text-transform: uppercase; color: #95a5a6; }
 .nav-item a { display: flex; align-items: center; padding: 0.75rem 1.5rem; color: var(--nav-text); text-decoration: none; transition: background-color 0.2s; }
 .nav-item.active a, .nav-item a:hover { background-color: var(--nav-hover); }
-.nav-item span { margin-right: 10px; font-size: 1.2rem; }
+.nav-item i { margin-right: 10px; font-size: 1rem; width: 20px; text-align: center; }
+#logout-btn { border-top: 1px solid rgba(255, 255, 255, 0.1); margin-top: 0.5rem; padding-top: 1rem; }
 
-/* --- Chatbot Toggle Button (Floating) --- */
-.chatbot-toggle-btn {
+/* --- Chatbot Toggle Tab (Side Tab) --- */
+.chatbot-toggle-tab {
     position: fixed;
-    top: 20px;
-    right: 20px;
-    width: 60px;
-    height: 60px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    top: 50%;
+    right: 0;
+    transform: translateY(-50%) translateX(35px);
+    width: 40px;
+    height: 120px;
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
     border: none;
-    cursor: move; /* 드래그 가능 커서 */
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    border-radius: 8px 0 0 8px;
+    cursor: pointer;
+    box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    gap: 0.5rem;
     z-index: 999;
-    transition: box-shadow 0.3s ease, transform 0.3s ease, left 0.3s ease, right 0.3s ease;
-    user-select: none; /* 드래그 중 텍스트 선택 방지 */
-    -webkit-user-drag: none; /* 이미지 드래그 방지 */
+    transition: transform 0.3s ease, box-shadow 0.3s ease;
+    color: white;
+    font-weight: 600;
+    user-select: none;
 }
 
-.chatbot-toggle-btn:hover {
-    transform: scale(1.1);
-    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2);
+.chatbot-toggle-tab:hover {
+    transform: translateY(-50%) translateX(0);
+    box-shadow: -4px 4px 12px rgba(0, 0, 0, 0.3);
 }
 
-.chatbot-toggle-btn.dragging {
-    cursor: grabbing;
-    transform: scale(1.15);
-    box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
-    transition: box-shadow 0.2s ease, transform 0.2s ease; /* 드래그 중에는 위치 transition만 제거 */
+.chatbot-toggle-tab .tab-icon {
+    font-size: 1.5rem;
+    line-height: 1;
 }
 
-.chatbot-toggle-btn .chatbot-icon {
-    font-size: 2rem;
-    pointer-events: none; /* 아이콘 자체는 클릭 이벤트 무시 */
+.chatbot-toggle-tab .tab-text {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
 }
 
-.chatbot-toggle-btn.hidden {
+.chatbot-toggle-tab.hidden {
     opacity: 0;
     pointer-events: none;
+    transform: translateY(-50%) translateX(100%);
 }
 
 /* --- Chatbot Sidebar --- */
@@ -149,7 +155,7 @@ body {
     align-items: center;
     padding: 1.5rem;
     border-bottom: 1px solid var(--border-color);
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
     color: white;
 }
 
@@ -160,7 +166,7 @@ body {
 }
 
 .chatbot-icon-header {
-    font-size: 1.8rem;
+    font-size: 1.5rem;
 }
 
 .chatbot-header h3 {
@@ -205,6 +211,7 @@ body {
 .chatbot-icon-large {
     font-size: 4rem;
     margin-bottom: 1rem;
+    color: #3498db;
 }
 
 .chatbot-welcome p {
@@ -236,7 +243,7 @@ body {
 }
 
 .chat-message.user .chat-bubble {
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
     color: white;
     border-bottom-right-radius: 4px;
 }
@@ -267,12 +274,12 @@ body {
 }
 
 .chatbot-input:focus {
-    border-color: #667eea;
+    border-color: #3498db;
 }
 
 .chatbot-send-btn {
     padding: 0.75rem 1.5rem;
-    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(135deg, #3498db 0%, #2980b9 100%);
     color: white;
     border: none;
     border-radius: 20px;
@@ -283,7 +290,7 @@ body {
 
 .chatbot-send-btn:hover {
     transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+    box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
 }
 
 .chatbot-send-btn:active {
@@ -342,7 +349,7 @@ body {
 .player-container { margin-bottom: 2rem; display: flex; justify-content: center; }
 #audio-player { width: 100%; }
 #video-player { width: 50%; border-radius: 8px; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1); }
-.transcript-container { border: 1px solid var(--border-color); border-radius: 5px; padding: 1rem; height: calc(100vh - 250px); /* Adjust height based on layout */ overflow-y: auto; }
+.transcript-container { border: 1px solid var(--border-color); border-radius: 5px; padding: 1rem; height: calc(100vh - 250px); /* Adjust height based on layout */ overflow-y: auto; background-color: #ffffff; }
 .segment-block { padding: 1rem; border-bottom: 1px solid var(--border-color); cursor: pointer; transition: background-color 0.2s; }
 .segment-block:last-child { border-bottom: none; }
 .segment-block:hover { background-color: #f8f9fa; }
@@ -378,11 +385,12 @@ body {
     border-radius: 5px;
     text-decoration: none;
     color: var(--text-color);
+    background-color: #ffffff;
     transition: background-color 0.2s, border-color 0.2s;
 }
 
 .note-item:hover {
-    background-color: #f8f9fa;
+    background-color: #f0f0f0;
     border-color: #ccc;
 }
 
@@ -488,7 +496,7 @@ body {
     padding: 1.5rem;
     height: calc(100vh - 320px);
     overflow-y: auto;
-    background-color: #fafafa;
+    background-color: #ffffff;
 }
 
 .summary-placeholder {
@@ -541,7 +549,7 @@ body {
     padding: 1.5rem;
     height: calc(100vh - 320px);
     overflow-y: auto;
-    background-color: #fafafa;
+    background-color: #ffffff;
 }
 
 .minutes-placeholder {
@@ -696,7 +704,7 @@ body {
 
 .progress-bar {
     height: 100%;
-    background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+    background: linear-gradient(90deg, #3498db 0%, #2980b9 100%);
     width: 0%;
     transition: width 0.3s ease;
     display: flex;

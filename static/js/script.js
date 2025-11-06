@@ -1,6 +1,6 @@
 document.addEventListener('DOMContentLoaded', () => {
     // --- Chatbot Toggle 기능 ---
-    const chatbotToggleBtn = document.getElementById('chatbot-toggle-btn');
+    const chatbotToggleTab = document.getElementById('chatbot-toggle-tab');
     const chatbotSidebar = document.getElementById('chatbot-sidebar');
     const btnCloseChatbot = document.getElementById('btn-close-chatbot');
     const chatbotInput = document.getElementById('chatbot-input');
@@ -18,111 +18,15 @@ document.addEventListener('DOMContentLoaded', () => {
     // 페이지 로드 시 챗봇 상태 복원
     restoreChatbotState();
 
-    // 드래그 앤 드롭 관련 변수
-    let isDragging = false;
-    let dragStartX = 0;
-    let dragStartY = 0;
-    let currentX = 0;
-    let currentY = 0;
-    let hasMoved = false;
-
-    // 저장된 위치 복원
-    if (chatbotToggleBtn) {
-        const savedTop = localStorage.getItem('chatbot-btn-top');
-        if (savedTop) {
-            chatbotToggleBtn.style.top = savedTop;
-        }
-
-        // 드래그 시작 함수
-        function startDrag(clientX, clientY) {
-            isDragging = true;
-            hasMoved = false;
-            dragStartX = clientX - chatbotToggleBtn.offsetLeft;
-            dragStartY = clientY - chatbotToggleBtn.offsetTop;
-            chatbotToggleBtn.classList.add('dragging');
-        }
-
-        // 마우스 다운 - 드래그 시작
-        chatbotToggleBtn.addEventListener('mousedown', (e) => {
-            startDrag(e.clientX, e.clientY);
-            e.preventDefault(); // 기본 동작 방지
-        });
-
-        // 터치 시작 - 모바일 지원
-        chatbotToggleBtn.addEventListener('touchstart', (e) => {
-            const touch = e.touches[0];
-            startDrag(touch.clientX, touch.clientY);
-            e.preventDefault();
-        }, { passive: false });
-
-        // 드래그 중 함수
-        function onDrag(clientX, clientY) {
-            if (!isDragging) return;
-
-            hasMoved = true;
-            currentX = clientX - dragStartX;
-            currentY = clientY - dragStartY;
-
-            // 화면 경계 제한
-            const maxY = window.innerHeight - chatbotToggleBtn.offsetHeight;
-            currentY = Math.max(0, Math.min(currentY, maxY));
-
-            chatbotToggleBtn.style.top = currentY + 'px';
-            chatbotToggleBtn.style.right = 'auto'; // 드래그 중에는 right 해제
-            chatbotToggleBtn.style.left = currentX + 'px';
-        }
-
-        // 마우스 무브 - 드래그 중
-        document.addEventListener('mousemove', (e) => {
-            onDrag(e.clientX, e.clientY);
-        });
-
-        // 터치 무브 - 모바일 지원
-        document.addEventListener('touchmove', (e) => {
-            if (isDragging) {
-                const touch = e.touches[0];
-                onDrag(touch.clientX, touch.clientY);
-                e.preventDefault();
-            }
-        }, { passive: false });
-
-        // 드래그 종료 함수
-        function endDrag() {
-            if (isDragging) {
-                isDragging = false;
-
-                if (hasMoved) {
-                    // 드래그했으면 오른쪽 끝으로 이동 (애니메이션 효과)
-                    // dragging 클래스를 제거한 후 위치 변경으로 transition 적용
-                    chatbotToggleBtn.classList.remove('dragging');
-
-                    // 약간의 지연 후 오른쪽으로 이동 (transition 적용)
-                    setTimeout(() => {
-                        chatbotToggleBtn.style.left = 'auto';
-                        chatbotToggleBtn.style.right = '20px';
-                    }, 10);
-
-                    // top 위치 저장
-                    localStorage.setItem('chatbot-btn-top', chatbotToggleBtn.style.top);
-                } else {
-                    // 드래그하지 않고 클릭만 했으면 챗봇 열기
-                    chatbotToggleBtn.classList.remove('dragging');
-                    openChatbot();
-                }
-            }
-        }
-
-        // 마우스 업 - 드래그 종료
-        document.addEventListener('mouseup', endDrag);
-
-        // 터치 엔드 - 모바일 지원
-        document.addEventListener('touchend', endDrag);
+    // 챗봇 탭 클릭 이벤트
+    if (chatbotToggleTab) {
+        chatbotToggleTab.addEventListener('click', openChatbot);
     }
 
     // 챗봇 열기 함수
     function openChatbot() {
         chatbotSidebar.classList.add('open');
-        chatbotToggleBtn.classList.add('hidden');
+        chatbotToggleTab.classList.add('hidden');
         if (appContainer) {
             appContainer.classList.add('chatbot-open');
         }
@@ -133,7 +37,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // 챗봇 닫기 함수
     function closeChatbot() {
         chatbotSidebar.classList.remove('open');
-        chatbotToggleBtn.classList.remove('hidden');
+        chatbotToggleTab.classList.remove('hidden');
         if (appContainer) {
             appContainer.classList.remove('chatbot-open');
         }
@@ -158,7 +62,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // 챗봇이 열려있던 상태였으면 다시 열기
             chatbotSidebar.classList.add('open');
-            chatbotToggleBtn.classList.add('hidden');
+            chatbotToggleTab.classList.add('hidden');
             if (appContainer) {
                 appContainer.classList.add('chatbot-open');
             }
