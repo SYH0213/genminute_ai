@@ -4,6 +4,7 @@
 **.mp4
 vector_db/
 **.db
+ngrok.exe
 
 
 # Byte-compiled / optimized / DLL files

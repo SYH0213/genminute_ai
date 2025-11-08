@@ -427,3 +427,45 @@ def get_user_accessible_meeting_ids(user_id: int) -> List[str]:
 
     finally:
         conn.close()
+
+
+def can_edit_meeting(user_id: int, meeting_id: str) -> bool:
+    """
+    사용자가 회의를 수정할 권한이 있는지 확인
+
+    조건:
+    - Admin: 모든 노트 수정 가능
+    - Owner: 본인 노트만 수정 가능
+    - 공유받은 사람: 수정 불가 (읽기만 가능)
+
+    Args:
+        user_id: 사용자 ID
+        meeting_id: 회의 ID
+
+    Returns:
+        수정 권한 여부 (True/False)
+    """
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    try:
+        # 1. Admin 체크
+        if is_admin(user_id):
+            return True
+
+        # 2. Owner 체크 (meeting_dialogues 기준)
+        cursor.execute("""
+            SELECT owner_id
+            FROM meeting_dialogues
+            WHERE meeting_id = ?
+            LIMIT 1
+        """, (meeting_id,))
+        result = cursor.fetchone()
+
+        if not result:
+            return False
+
+        return result['owner_id'] == user_id
+
+    finally:
+        conn.close()

@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const speakerColors = ['#4A90E2', '#50C878', '#F39C12', '#9B59B6', '#E74C3C', '#1ABC9C', '#E91E63', '#FFC107']; // 화자 색상 팔레트
     let speakerShareData = null; // 화자별 점유율 데이터
     let chartInstance = null; // Chart.js 인스턴스
+    let originalMeetingDate = ''; // 원본 회의 날짜 (DB 형식: "YYYY-MM-DD HH:MM:SS")
 
     // 탭 전환 기능
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -58,6 +59,22 @@ document.addEventListener('DOMContentLoaded', () => {
             // 데이터로 뷰어 설정
             segments = data.transcript;
             meetingTitle.textContent = data.title;
+
+            // 편집 권한이 있는 경우 연필 버튼 표시
+            if (data.can_edit) {
+                const editTitleBtn = document.getElementById('edit-title-btn');
+                if (editTitleBtn) {
+                    editTitleBtn.style.display = 'flex';
+                }
+
+                const editDateBtn = document.getElementById('edit-date-btn');
+                if (editDateBtn) {
+                    editDateBtn.style.display = 'flex';
+                }
+            }
+
+            // 원본 회의 날짜 저장
+            originalMeetingDate = data.meeting_date;
 
             // 파일 확장자 확인하여 비디오/오디오 플레이어 선택
             const audioUrl = data.audio_url;
@@ -323,13 +340,15 @@ document.addEventListener('DOMContentLoaded', () => {
         const dateDisplay = document.getElementById('meeting-date-display');
         if (!dateDisplay || !meetingDate) return;
 
-        // "2025-01-05 14:30:00" 형식을 "2025년 1월 5일" 형식으로 변환
+        // "2025-01-05 14:30:00" 형식을 "2025년 1월 5일 오후 2:30" 형식으로 변환
         try {
             const date = new Date(meetingDate);
-            const formattedDate = date.toLocaleDateString('ko-KR', {
+            const formattedDate = date.toLocaleString('ko-KR', {
                 year: 'numeric',
                 month: 'long',
-                day: 'numeric'
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
             });
             dateDisplay.textContent = formattedDate;
         } catch (error) {
@@ -472,6 +491,314 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                 }
+            }
+        });
+    }
+
+    // ======================================
+    // 제목 편집 기능
+    // ======================================
+
+    const editTitleBtn = document.getElementById('edit-title-btn');
+    const titleEditMode = document.getElementById('title-edit-mode');
+    const titleInput = document.getElementById('title-input');
+    const saveTitleBtn = document.getElementById('save-title-btn');
+    const cancelTitleBtn = document.getElementById('cancel-title-btn');
+    const titleEditContainer = document.querySelector('.title-edit-container');
+
+    let originalTitle = '';
+
+    // 편집 모드 활성화
+    function enableTitleEdit() {
+        originalTitle = meetingTitle.textContent;
+        titleInput.value = originalTitle;
+
+        // 제목 컨테이너 숨기고 편집 모드 표시
+        titleEditContainer.style.display = 'none';
+        titleEditMode.style.display = 'flex';
+
+        // 입력 필드에 포커스
+        titleInput.focus();
+        titleInput.select();
+    }
+
+    // 편집 모드 취소
+    function cancelTitleEdit() {
+        // 편집 모드 숨기고 제목 컨테이너 표시
+        titleEditMode.style.display = 'none';
+        titleEditContainer.style.display = 'flex';
+
+        // 입력 필드 초기화
+        titleInput.value = '';
+    }
+
+    // 제목 저장
+    async function saveTitleEdit() {
+        const newTitle = titleInput.value.trim();
+
+        // 제목 validation
+        if (!newTitle) {
+            alert('제목을 입력해주세요.');
+            titleInput.focus();
+            return;
+        }
+
+        if (newTitle.length > 100) {
+            alert('제목은 100자 이하로 입력해주세요.');
+            titleInput.focus();
+            return;
+        }
+
+        // 변경사항이 없는 경우
+        if (newTitle === originalTitle) {
+            cancelTitleEdit();
+            return;
+        }
+
+        // 저장 버튼 비활성화 (중복 클릭 방지)
+        saveTitleBtn.disabled = true;
+        saveTitleBtn.textContent = '저장 중...';
+
+        try {
+            const response = await fetch(`/api/update_title/${MEETING_ID}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ title: newTitle })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '제목 수정에 실패했습니다.');
+            }
+
+            // 성공: 화면의 제목 업데이트
+            meetingTitle.textContent = newTitle;
+
+            // 편집 모드 종료
+            cancelTitleEdit();
+
+            // 성공 메시지
+            console.log('✅ 제목 수정 완료:', newTitle);
+            alert('제목이 성공적으로 수정되었습니다.');
+
+        } catch (error) {
+            console.error('❌ 제목 수정 실패:', error);
+            alert(`제목 수정 중 오류가 발생했습니다:\n${error.message}`);
+        } finally {
+            // 버튼 복원
+            saveTitleBtn.disabled = false;
+            saveTitleBtn.textContent = '저장';
+        }
+    }
+
+    // 이벤트 리스너 등록
+    if (editTitleBtn) {
+        editTitleBtn.addEventListener('click', enableTitleEdit);
+    }
+
+    if (saveTitleBtn) {
+        saveTitleBtn.addEventListener('click', saveTitleEdit);
+    }
+
+    if (cancelTitleBtn) {
+        cancelTitleBtn.addEventListener('click', cancelTitleEdit);
+    }
+
+    // Enter 키로 저장, Esc 키로 취소
+    if (titleInput) {
+        titleInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveTitleEdit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelTitleEdit();
+            }
+        });
+    }
+
+    // ======================================
+    // 날짜 편집 기능
+    // ======================================
+
+    const editDateBtn = document.getElementById('edit-date-btn');
+    const dateEditMode = document.getElementById('date-edit-mode');
+    const dateInput = document.getElementById('date-input');
+    const saveDateBtn = document.getElementById('save-date-btn');
+    const cancelDateBtn = document.getElementById('cancel-date-btn');
+    const dateEditContainer = document.querySelector('.date-edit-container');
+    const meetingDateDisplay = document.getElementById('meeting-date-display');
+
+    /**
+     * DB 형식 날짜를 datetime-local 형식으로 변환
+     * @param {string} dbDate - "YYYY-MM-DD HH:MM:SS" 형식
+     * @returns {string} - "YYYY-MM-DDTHH:MM" 형식
+     */
+    function dbDateToInputFormat(dbDate) {
+        if (!dbDate) return '';
+
+        try {
+            // "YYYY-MM-DD HH:MM:SS" -> "YYYY-MM-DDTHH:MM"
+            const parts = dbDate.split(' ');
+            if (parts.length !== 2) return '';
+
+            const datePart = parts[0]; // "YYYY-MM-DD"
+            const timePart = parts[1].substring(0, 5); // "HH:MM" (초 제거)
+
+            return `${datePart}T${timePart}`;
+        } catch (error) {
+            console.error('날짜 형식 변환 오류:', error);
+            return '';
+        }
+    }
+
+    /**
+     * datetime-local 형식을 DB 형식으로 변환
+     * @param {string} inputDate - "YYYY-MM-DDTHH:MM" 형식
+     * @returns {string} - "YYYY-MM-DD HH:MM:SS" 형식
+     */
+    function inputDateToDbFormat(inputDate) {
+        if (!inputDate) return '';
+
+        try {
+            // "YYYY-MM-DDTHH:MM" -> "YYYY-MM-DD HH:MM:SS"
+            const parts = inputDate.split('T');
+            if (parts.length !== 2) return '';
+
+            const datePart = parts[0]; // "YYYY-MM-DD"
+            const timePart = parts[1]; // "HH:MM"
+
+            return `${datePart} ${timePart}:00`;
+        } catch (error) {
+            console.error('날짜 형식 변환 오류:', error);
+            return '';
+        }
+    }
+
+    // 편집 모드 활성화
+    function enableDateEdit() {
+        // 입력 필드에 현재 날짜 설정 (datetime-local 형식으로 변환)
+        const inputFormat = dbDateToInputFormat(originalMeetingDate);
+        dateInput.value = inputFormat;
+
+        // 날짜 컨테이너 숨기고 편집 모드 표시
+        dateEditContainer.style.display = 'none';
+        dateEditMode.style.display = 'flex';
+
+        // 입력 필드에 포커스
+        dateInput.focus();
+    }
+
+    // 편집 모드 취소
+    function cancelDateEdit() {
+        // 편집 모드 숨기고 날짜 컨테이너 표시
+        dateEditMode.style.display = 'none';
+        dateEditContainer.style.display = 'flex';
+
+        // 입력 필드 초기화
+        dateInput.value = '';
+    }
+
+    // 날짜 저장
+    async function saveDateEdit() {
+        const newDateInput = dateInput.value.trim();
+
+        // 날짜 validation
+        if (!newDateInput) {
+            alert('날짜를 입력해주세요.');
+            dateInput.focus();
+            return;
+        }
+
+        // DB 형식으로 변환
+        const newDateDb = inputDateToDbFormat(newDateInput);
+
+        // 변경사항이 없는 경우
+        if (newDateDb === originalMeetingDate) {
+            cancelDateEdit();
+            return;
+        }
+
+        // 저장 버튼 비활성화 (중복 클릭 방지)
+        saveDateBtn.disabled = true;
+        saveDateBtn.textContent = '저장 중...';
+
+        try {
+            const response = await fetch(`/api/update_date/${MEETING_ID}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ date: newDateInput })
+            });
+
+            const data = await response.json();
+
+            if (!response.ok || !data.success) {
+                throw new Error(data.error || '날짜 수정에 실패했습니다.');
+            }
+
+            // 성공: 날짜 업데이트
+            originalMeetingDate = data.new_date;
+
+            // 화면에 표시되는 날짜 업데이트 (한국어 형식 - 시간 포함)
+            try {
+                const date = new Date(data.new_date);
+                const formattedDate = date.toLocaleString('ko-KR', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                meetingDateDisplay.textContent = formattedDate;
+            } catch (error) {
+                console.error('날짜 포맷 오류:', error);
+                meetingDateDisplay.textContent = data.new_date;
+            }
+
+            // 편집 모드 종료
+            cancelDateEdit();
+
+            // 성공 메시지
+            console.log('✅ 날짜 수정 완료:', data.new_date);
+            alert('날짜가 성공적으로 수정되었습니다.');
+
+        } catch (error) {
+            console.error('❌ 날짜 수정 실패:', error);
+            alert(`날짜 수정 중 오류가 발생했습니다:\n${error.message}`);
+        } finally {
+            // 버튼 복원
+            saveDateBtn.disabled = false;
+            saveDateBtn.textContent = '저장';
+        }
+    }
+
+    // 이벤트 리스너 등록
+    if (editDateBtn) {
+        editDateBtn.addEventListener('click', enableDateEdit);
+    }
+
+    if (saveDateBtn) {
+        saveDateBtn.addEventListener('click', saveDateEdit);
+    }
+
+    if (cancelDateBtn) {
+        cancelDateBtn.addEventListener('click', cancelDateEdit);
+    }
+
+    // Enter 키로 저장, Esc 키로 취소
+    if (dateInput) {
+        dateInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                saveDateEdit();
+            } else if (e.key === 'Escape') {
+                e.preventDefault();
+                cancelDateEdit();
             }
         });
     }

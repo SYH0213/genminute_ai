@@ -1,6 +1,6 @@
 # Minute AI - 인수인계 문서
 
-## 📅 마지막 업데이트: 2025-01-06
+## 📅 마지막 업데이트: 2025-11-07
 
 ---
 
@@ -440,6 +440,202 @@ INSERT INTO meeting_dialogues
 (meeting_id, meeting_date, speaker_label, start_time, segment, confidence, audio_file, title, owner_id)
 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
 ```
+
+---
+
+## 🆕 최근 구현 내용 (2025-11-07)
+
+### 1️⃣ 사용자 정보 카드 추가 (완료)
+
+**구현 내용**:
+- 왼쪽 네비게이션 하단에 사용자 정보 카드 추가
+- 프로필 사진, 이름, 이메일 표시
+- 로그아웃 버튼 위치 변경 (기존 상단 → 사용자 카드 내부)
+
+**수정된 파일**:
+- `templates/layout.html:30-42` - 사용자 정보 카드 HTML 추가
+  ```html
+  <div class="user-info-card">
+      <img id="user-profile-picture" src="" alt="Profile">
+      <div class="user-details">
+          <div id="user-name" class="user-name">Loading...</div>
+          <div id="user-email" class="user-email">Loading...</div>
+      </div>
+  </div>
+  <button id="logout-btn" class="logout-btn">
+      <i class="fa-solid fa-right-from-bracket"></i>
+      <span>로그아웃</span>
+  </button>
+  ```
+
+- `static/css/style.css:655-720` - 사용자 카드 스타일 추가
+  - 프로필 사진: 40px 원형
+  - 카드 배경: 약간 어두운 회색 (#34495e)
+  - 호버 효과: 살짝 밝아짐
+
+- `static/js/script.js:11-34` - 사용자 정보 로드 로직
+  ```javascript
+  fetch('/api/me')
+      .then(res => res.json())
+      .then(data => {
+          document.getElementById('user-name').textContent = data.name;
+          document.getElementById('user-email').textContent = data.email;
+          document.getElementById('user-profile-picture').src = data.profile_picture;
+      });
+  ```
+
+- `app.py:120-130` - `/api/me` 엔드포인트 추가
+
+**특징**:
+- ✅ Firebase에서 가져온 사용자 정보 표시
+- ✅ 프로필 사진 자동 로드
+- ✅ 로그아웃 버튼을 카드 아래로 이동하여 UX 개선
+
+---
+
+### 2️⃣ 노트 공유 모달 UI 개선 (완료)
+
+**구현 내용**:
+- 공유 모달의 "공유" 버튼과 "취소" 버튼 크기 및 위치 통일
+
+**문제점**:
+- 공유 버튼: 80x48px
+- 취소 버튼: 80x80px (높이 불일치)
+- 세로 좌표 불일치로 버튼이 정렬되지 않음
+
+**수정된 파일**:
+- `templates/notes.html:181-219` - 버튼 스타일 수정
+  ```css
+  .modal .btn-secondary {
+      width: 80px;
+      height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+  }
+
+  .modal .btn-primary {
+      width: 80px;
+      height: 48px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+  }
+  ```
+
+- `templates/notes.html:164` - 버튼 컨테이너 정렬
+  ```css
+  .modal-buttons {
+      align-items: center;  /* 세로 중앙 정렬 추가 */
+  }
+  ```
+
+**개선 효과**:
+- ✅ 두 버튼 크기 통일 (80x48px)
+- ✅ 세로 위치 정렬
+- ✅ 버튼 텍스트 중앙 정렬 (flexbox 사용)
+
+---
+
+### 3️⃣ 검색 기능 최적화 및 UI 개선 (완료)
+
+**구현 내용**:
+- 유사도 검색 적용 및 필터링 로직 수정
+- 검색 결과 표시 개선
+- 버튼 스타일 수정
+
+**수정된 파일**:
+- `utils/chat_manager.py` - 챗봇 검색 로직 개선 (143줄 추가)
+  - 검색 결과 랭킹 개선
+  - 중복 제거 로직 강화
+  - 출처 정보 포맷팅 개선
+
+- `utils/vector_db_manager.py` - Vector DB 검색 로직 수정 (103줄 추가)
+  - 유사도 점수 기반 필터링
+  - 검색 정확도 향상
+  - 메타데이터 추출 개선
+
+- `templates/retriever.html` - 검색 결과 UI 개선
+  - 결과 카드 레이아웃 수정
+  - 유사도 점수 표시 추가
+
+- `static/js/retriever.js` - 검색 결과 렌더링 로직 수정
+- `static/css/style.css` - 버튼 스타일 수정
+- `templates/notes.html` - 노트 목록 버튼 스타일 개선
+
+**개선 효과**:
+- ✅ 검색 정확도 향상
+- ✅ 검색 결과 표시 가독성 개선
+- ✅ 유사도 기반 필터링으로 불필요한 결과 제거
+
+---
+
+### 4️⃣ 회의록 포맷 개선 (완료)
+
+**구현 내용**:
+- 회의 요약 및 액션 아이템 섹션의 포맷 개선
+- 불필요한 공백 제거
+- 가독성 향상
+
+**수정된 파일**:
+- `utils/stt.py:194-215` - 회의록 생성 프롬프트 수정
+  ```python
+  # 불필요한 공백 제거
+  # 마크다운 포맷 개선
+  # 섹션 구분 명확화
+  ```
+
+**개선 효과**:
+- ✅ 회의록 가독성 향상
+- ✅ 일관된 포맷팅
+- ✅ 불필요한 공백 제거로 깔끔한 출력
+
+---
+
+### 5️⃣ 문서 정리 및 추가 (완료)
+
+**추가된 문서**:
+1. `ui_format.md` - UI 포맷 가이드라인
+2. `JSON_파싱_오류_해결_가이드.md` - JSON 트러블슈팅
+3. `고아데이터_버그_수정_완료.md` - 버그 수정 보고서
+4. `기본기능_점검_체크리스트.md` - 기능 테스트 가이드
+5. `발표_PPT_개발파트.md` - PPT 개발 파트
+6. `발표_PPT_내용.md` - PPT 전체 구성안
+7. `발표자료_참고문서.md` - 발표 참고 자료
+8. `발표전_필수_테스트.md` - 테스트 체크리스트
+9. `시스템구조_문서.md` - 시스템 아키텍처 문서
+10. `작업_완료_보고서.md` - 작업 완료 보고서
+11. `촬영(Filming).md` - 데모 영상 촬영 가이드
+
+**특징**:
+- ✅ 발표 준비를 위한 문서 체계화
+- ✅ 시스템 이해를 돕는 상세 문서
+- ✅ 유지보수 가이드 제공
+
+---
+
+### 6️⃣ 고아 데이터 정리 기능 강화 (완료)
+
+**구현 내용**:
+- 기존 `cleanup_orphan_data.py` 스크립트 개선
+- 사용자별 고아 데이터 정리 지원 추가
+
+**수정된 파일**:
+- `cleanup_orphan_data.py` - 169줄 스크립트
+  - Vector DB에서 고아 데이터 감지
+  - SQLite DB와 비교하여 불일치 데이터 삭제
+  - uploads 폴더의 미사용 파일 정리
+  - 상세한 삭제 로그 출력
+
+**실행 방법**:
+```bash
+python cleanup_orphan_data.py
+```
+
+**특징**:
+- ✅ 안전한 삭제 (확인 후 삭제)
+- ✅ 상세 로그 (삭제 전/후 비교)
+- ✅ 파일 크기 표시
 
 ---
 
@@ -1529,7 +1725,15 @@ templates/viewer.html      # 타임스탬프 점프 로직
 ---
 
 **작성자**: Claude Code
-**마지막 업데이트**: 2025-01-06
+**마지막 업데이트**: 2025-11-07
+
+**주요 업데이트 (2025-11-07)**:
+- ✅ 사용자 정보 카드 추가 (네비게이션 하단에 프로필 사진, 이름, 이메일 표시)
+- ✅ 노트 공유 모달 UI 개선 (버튼 크기 및 위치 통일)
+- ✅ 검색 기능 최적화 (유사도 기반 필터링, 검색 정확도 향상)
+- ✅ 회의록 포맷 개선 (불필요한 공백 제거, 가독성 향상)
+- ✅ 문서 체계화 (11개 마크다운 문서 추가 - 발표 준비 및 시스템 이해)
+- ✅ 고아 데이터 정리 기능 강화 (cleanup_orphan_data.py 개선)
 
 **주요 업데이트 (2025-01-06)**:
 - ✅ 공유 노트 조회 기능 (왼쪽 메뉴에 "공유 노트 보기" 추가)
@@ -1560,7 +1764,9 @@ templates/viewer.html      # 타임스탬프 점프 로직
 4️⃣ 데모 영상 촬영 (`촬영(Filming).md` 참조)
 
 **향후 개선 우선순위** (발표 이후):
-1️⃣ 일괄 삭제 프로그레스 모달
-2️⃣ 챗봇 추천 질문 기능
-3️⃣ 챗봇 출처 링크 (타임스탬프 점프)
+1️⃣ 일괄 삭제 프로그레스 모달 (UX 개선)
+2️⃣ 챗봇 추천 질문 기능 (회의 내용 기반 자동 질문 생성)
+3️⃣ 챗봇 출처 링크 (타임스탬프 점프 기능)
 4️⃣ [cite: N] 클릭 시 원본 이동 기능 (실제 매핑 필요)
+5️⃣ 모바일 반응형 디자인 (현재 데스크톱 위주)
+6️⃣ 실시간 알림 시스템 (공유 노트 알림, 처리 완료 알림)

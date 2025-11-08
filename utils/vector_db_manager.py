@@ -854,6 +854,212 @@ class VectorDBManager:
             }
         }
 
+    def update_metadata_title(self, meeting_id, new_title):
+        """
+        ChromaDB의 meeting_chunk와 meeting_subtopic 컬렉션에서
+        해당 meeting_id의 모든 문서 메타데이터의 title을 업데이트합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+            new_title (str): 새로운 제목
+
+        Returns:
+            dict: 업데이트 결과 {'success': bool, 'updated_chunks': int, 'updated_subtopics': int}
+        """
+        print(f"\n📊 [ChromaDB 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
+        print("=" * 70)
+
+        updated_chunks = 0
+        updated_subtopics = 0
+
+        try:
+            # 1. meeting_chunk 컬렉션 업데이트
+            print(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
+
+            # ChromaDB 네이티브 컬렉션 가져오기
+            chunk_collection = self.client.get_collection(name=self.COLLECTION_NAMES['chunks'])
+
+            # meeting_id로 문서 조회
+            chunk_results = chunk_collection.get(
+                where={"meeting_id": meeting_id}
+            )
+
+            chunk_ids = chunk_results['ids']
+
+            if chunk_ids:
+                # 모든 문서의 메타데이터에서 title만 변경
+                updated_metadatas = []
+                for metadata in chunk_results['metadatas']:
+                    updated_metadata = metadata.copy()
+                    updated_metadata['title'] = new_title
+                    updated_metadatas.append(updated_metadata)
+
+                # 일괄 업데이트
+                chunk_collection.update(
+                    ids=chunk_ids,
+                    metadatas=updated_metadatas
+                )
+                updated_chunks = len(chunk_ids)
+                print(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 title 업데이트 완료")
+            else:
+                print(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
+
+            # 2. meeting_subtopic 컬렉션 업데이트
+            print(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
+
+            # ChromaDB 네이티브 컬렉션 가져오기
+            subtopic_collection = self.client.get_collection(name=self.COLLECTION_NAMES['subtopic'])
+
+            # meeting_id로 문서 조회
+            subtopic_results = subtopic_collection.get(
+                where={"meeting_id": meeting_id}
+            )
+
+            subtopic_ids = subtopic_results['ids']
+
+            if subtopic_ids:
+                # 모든 문서의 메타데이터에서 meeting_title만 변경
+                updated_metadatas = []
+                for metadata in subtopic_results['metadatas']:
+                    updated_metadata = metadata.copy()
+                    updated_metadata['meeting_title'] = new_title  # ← meeting_subtopic은 'meeting_title' 필드 사용
+                    updated_metadatas.append(updated_metadata)
+
+                # 일괄 업데이트
+                subtopic_collection.update(
+                    ids=subtopic_ids,
+                    metadatas=updated_metadatas
+                )
+                updated_subtopics = len(subtopic_ids)
+                print(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_title 업데이트 완료")
+            else:
+                print(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
+
+            print("-" * 70)
+            print(f"✅ ChromaDB 메타데이터 업데이트 완료")
+            print(f"   • meeting_chunk: {updated_chunks}개")
+            print(f"   • meeting_subtopic: {updated_subtopics}개")
+            print("=" * 70 + "\n")
+
+            return {
+                'success': True,
+                'updated_chunks': updated_chunks,
+                'updated_subtopics': updated_subtopics
+            }
+
+        except Exception as e:
+            print(f"❌ ChromaDB 메타데이터 업데이트 실패: {e}")
+            print("=" * 70 + "\n")
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_chunks': updated_chunks,
+                'updated_subtopics': updated_subtopics
+            }
+
+    def update_metadata_date(self, meeting_id, new_date):
+        """
+        ChromaDB의 meeting_chunk와 meeting_subtopic 컬렉션에서
+        해당 meeting_id의 모든 문서 메타데이터의 meeting_date를 업데이트합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+            new_date (str): 새로운 날짜 (형식: "YYYY-MM-DD HH:MM:SS")
+
+        Returns:
+            dict: 업데이트 결과 {'success': bool, 'updated_chunks': int, 'updated_subtopics': int}
+        """
+        print(f"\n📊 [ChromaDB 날짜 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
+        print("=" * 70)
+
+        updated_chunks = 0
+        updated_subtopics = 0
+
+        try:
+            # 1. meeting_chunk 컬렉션 업데이트
+            print(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
+
+            # ChromaDB 네이티브 컬렉션 가져오기
+            chunk_collection = self.client.get_collection(name=self.COLLECTION_NAMES['chunks'])
+
+            # meeting_id로 문서 조회
+            chunk_results = chunk_collection.get(
+                where={"meeting_id": meeting_id}
+            )
+
+            chunk_ids = chunk_results['ids']
+
+            if chunk_ids:
+                # 모든 문서의 메타데이터에서 meeting_date만 변경
+                updated_metadatas = []
+                for metadata in chunk_results['metadatas']:
+                    updated_metadata = metadata.copy()
+                    updated_metadata['meeting_date'] = new_date
+                    updated_metadatas.append(updated_metadata)
+
+                # 일괄 업데이트
+                chunk_collection.update(
+                    ids=chunk_ids,
+                    metadatas=updated_metadatas
+                )
+                updated_chunks = len(chunk_ids)
+                print(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 meeting_date 업데이트 완료")
+            else:
+                print(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
+
+            # 2. meeting_subtopic 컬렉션 업데이트
+            print(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
+
+            # ChromaDB 네이티브 컬렉션 가져오기
+            subtopic_collection = self.client.get_collection(name=self.COLLECTION_NAMES['subtopic'])
+
+            # meeting_id로 문서 조회
+            subtopic_results = subtopic_collection.get(
+                where={"meeting_id": meeting_id}
+            )
+
+            subtopic_ids = subtopic_results['ids']
+
+            if subtopic_ids:
+                # 모든 문서의 메타데이터에서 meeting_date만 변경
+                updated_metadatas = []
+                for metadata in subtopic_results['metadatas']:
+                    updated_metadata = metadata.copy()
+                    updated_metadata['meeting_date'] = new_date
+                    updated_metadatas.append(updated_metadata)
+
+                # 일괄 업데이트
+                subtopic_collection.update(
+                    ids=subtopic_ids,
+                    metadatas=updated_metadatas
+                )
+                updated_subtopics = len(subtopic_ids)
+                print(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_date 업데이트 완료")
+            else:
+                print(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
+
+            print("-" * 70)
+            print(f"✅ ChromaDB 날짜 메타데이터 업데이트 완료")
+            print(f"   • meeting_chunk: {updated_chunks}개")
+            print(f"   • meeting_subtopic: {updated_subtopics}개")
+            print("=" * 70 + "\n")
+
+            return {
+                'success': True,
+                'updated_chunks': updated_chunks,
+                'updated_subtopics': updated_subtopics
+            }
+
+        except Exception as e:
+            print(f"❌ ChromaDB 날짜 메타데이터 업데이트 실패: {e}")
+            print("=" * 70 + "\n")
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_chunks': updated_chunks,
+                'updated_subtopics': updated_subtopics
+            }
+
 
 
 # --- 싱글톤 인스턴스 생성 ---

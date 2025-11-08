@@ -16,7 +16,7 @@ from utils.validation import validate_title, parse_meeting_date
 from utils.chat_manager import ChatManager
 from utils.analysis import calculate_speaker_share
 from utils.firebase_auth import initialize_firebase, verify_id_token
-from utils.user_manager import get_or_create_user, get_user_by_id, can_access_meeting, get_user_meetings, get_shared_meetings, share_meeting, get_shared_users, remove_share, get_user_accessible_meeting_ids, is_admin
+from utils.user_manager import get_or_create_user, get_user_by_id, can_access_meeting, get_user_meetings, get_shared_meetings, share_meeting, get_shared_users, remove_share, get_user_accessible_meeting_ids, is_admin, can_edit_meeting
 from utils.decorators import login_required, admin_required
 
 # --- 환경 변수 로드 ---
@@ -586,6 +586,9 @@ def get_meeting_data(meeting_id):
         # 화자별 점유율 계산
         speaker_share_data = calculate_speaker_share(meeting_id)
 
+        # 수정 권한 확인 (owner 또는 admin만 수정 가능)
+        can_edit = can_edit_meeting(user_id, meeting_id)
+
         return jsonify({
             "success": True,
             "meeting_id": meeting_id,
@@ -594,7 +597,8 @@ def get_meeting_data(meeting_id):
             "participants": participants,
             "audio_url": url_for('uploaded_file', filename=audio_file),
             "transcript": transcript,
-            "speaker_share": speaker_share_data
+            "speaker_share": speaker_share_data,
+            "can_edit": can_edit
         })
     except Exception as e:
         return jsonify({"success": False, "error": f"DB 조회 오류: {e}"}), 500
@@ -982,6 +986,110 @@ def unshare_meeting_api(meeting_id, user_id):
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": f"공유 해제 중 오류가 발생했습니다: {str(e)}"}), 500
+
+@app.route("/api/update_title/<string:meeting_id>", methods=["POST"])
+@login_required
+def update_title_api(meeting_id):
+    """노트 제목 수정 API"""
+    try:
+        user_id = session['user_id']
+
+        # 1. 권한 체크 (owner 또는 admin만 수정 가능)
+        if not can_edit_meeting(user_id, meeting_id):
+            return jsonify({"success": False, "error": "제목을 수정할 권한이 없습니다. (소유자만 수정 가능)"}), 403
+
+        # 2. 제목 가져오기
+        data = request.get_json()
+        new_title = data.get('title', '').strip()
+
+        # 3. 제목 validation
+        if not new_title:
+            return jsonify({"success": False, "error": "제목을 입력해주세요."}), 400
+
+        if len(new_title) > 100:
+            return jsonify({"success": False, "error": "제목은 100자 이하로 입력해주세요."}), 400
+
+        # 4. DB 업데이트 (ChromaDB + SQLite)
+        result = db.update_meeting_title(meeting_id, new_title)
+
+        if result['success']:
+            vector_info = result.get('updated_vector', {})
+            return jsonify({
+                "success": True,
+                "message": "제목이 성공적으로 수정되었습니다.",
+                "new_title": new_title,
+                "updated_dialogues": result['updated_dialogues'],
+                "updated_minutes": result['updated_minutes'],
+                "updated_vector_chunks": vector_info.get('updated_chunks', 0),
+                "updated_vector_subtopics": vector_info.get('updated_subtopics', 0)
+            })
+        else:
+            return jsonify({"success": False, "error": result.get('error', '알 수 없는 오류')}), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"제목 수정 중 오류가 발생했습니다: {str(e)}"}), 500
+
+@app.route("/api/update_date/<string:meeting_id>", methods=["POST"])
+@login_required
+def update_date_api(meeting_id):
+    """노트 날짜 수정 API"""
+    try:
+        user_id = session['user_id']
+
+        # 1. 권한 체크 (owner 또는 admin만 수정 가능)
+        if not can_edit_meeting(user_id, meeting_id):
+            return jsonify({"success": False, "error": "날짜를 수정할 권한이 없습니다. (소유자만 수정 가능)"}), 403
+
+        # 2. 날짜 가져오기
+        data = request.get_json()
+        new_date = data.get('date', '').strip()
+
+        # 3. 날짜 validation
+        if not new_date:
+            return jsonify({"success": False, "error": "날짜를 입력해주세요."}), 400
+
+        # 날짜 형식 검증 (YYYY-MM-DD HH:MM:SS)
+        try:
+            import datetime
+            # 브라우저에서 받는 형식: "YYYY-MM-DDTHH:MM"
+            # DB에 저장할 형식: "YYYY-MM-DD HH:MM:SS"
+
+            # ISO 형식 파싱 시도 (T가 포함된 경우)
+            if 'T' in new_date:
+                parsed_date = datetime.datetime.strptime(new_date, "%Y-%m-%dT%H:%M")
+            else:
+                # 이미 DB 형식인 경우
+                parsed_date = datetime.datetime.strptime(new_date, "%Y-%m-%d %H:%M:%S")
+
+            # DB 형식으로 변환 (초 단위는 00으로 설정)
+            formatted_date = parsed_date.strftime("%Y-%m-%d %H:%M:%S")
+
+        except ValueError as ve:
+            return jsonify({"success": False, "error": f"날짜 형식이 올바르지 않습니다: {str(ve)}"}), 400
+
+        # 4. DB 업데이트 (ChromaDB + SQLite)
+        result = db.update_meeting_date(meeting_id, formatted_date)
+
+        if result['success']:
+            vector_info = result.get('updated_vector', {})
+            return jsonify({
+                "success": True,
+                "message": "날짜가 성공적으로 수정되었습니다.",
+                "new_date": formatted_date,
+                "updated_dialogues": result['updated_dialogues'],
+                "updated_minutes": result['updated_minutes'],
+                "updated_vector_chunks": vector_info.get('updated_chunks', 0),
+                "updated_vector_subtopics": vector_info.get('updated_subtopics', 0)
+            })
+        else:
+            return jsonify({"success": False, "error": result.get('error', '알 수 없는 오류')}), 500
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"날짜 수정 중 오류가 발생했습니다: {str(e)}"}), 500
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5050, debug=True)

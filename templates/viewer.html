@@ -6,13 +6,33 @@
 <main class="content-panel">
     <div class="viewer-container">
         <header class="viewer-header">
-            <h1 id="meeting-title">회의록 로딩 중...</h1>
+            <div class="title-edit-container">
+                <h1 id="meeting-title">회의록 로딩 중...</h1>
+                <button id="edit-title-btn" class="btn-edit-title" title="제목 수정" style="display: none;">
+                    <i class="fa-solid fa-pencil"></i>
+                </button>
+            </div>
+            <div id="title-edit-mode" class="title-edit-mode" style="display: none;">
+                <input type="text" id="title-input" class="title-input" maxlength="100" placeholder="제목을 입력하세요">
+                <button id="save-title-btn" class="btn-save-title">저장</button>
+                <button id="cancel-title-btn" class="btn-cancel-title">취소</button>
+            </div>
         </header>
 
         <!-- 회의 정보 섹션 -->
         <div class="meeting-info-section">
             <div class="meeting-date">
-                <span id="meeting-date-display">날짜 로딩 중...</span>
+                <div class="date-edit-container">
+                    <span id="meeting-date-display">날짜 로딩 중...</span>
+                    <button id="edit-date-btn" class="btn-edit-date" title="날짜 수정" style="display: none;">
+                        <i class="fa-solid fa-pencil"></i>
+                    </button>
+                </div>
+                <div id="date-edit-mode" class="date-edit-mode" style="display: none;">
+                    <input type="datetime-local" id="date-input" class="date-input">
+                    <button id="save-date-btn" class="btn-save-date">저장</button>
+                    <button id="cancel-date-btn" class="btn-cancel-date">취소</button>
+                </div>
             </div>
             <div class="meeting-participants">
                 <div class="participants-list" id="participants-list">
@@ -77,6 +97,267 @@
         </div>
     </div>
 </main>
+
+<style>
+/* 제목 편집 컨테이너 */
+.title-edit-container {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.title-edit-container h1 {
+    margin: 0;
+    flex: 1;
+}
+
+/* 연필 버튼 스타일 */
+.btn-edit-title {
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-edit-title:hover {
+    background: #2980b9;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-edit-title:active {
+    transform: scale(0.95);
+}
+
+/* 편집 모드 컨테이너 */
+.title-edit-mode {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 1rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+}
+
+/* 제목 입력 필드 */
+.title-input {
+    flex: 1;
+    padding: 0.75rem 1rem;
+    font-size: 1.1rem;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    font-family: inherit;
+}
+
+.title-input:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+/* 저장 버튼 */
+.btn-save-title {
+    padding: 0.75rem 1.5rem;
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-save-title:hover {
+    background: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-save-title:active {
+    transform: translateY(0);
+}
+
+/* 취소 버튼 */
+.btn-cancel-title {
+    padding: 0.75rem 1.5rem;
+    background: #95a5a6;
+    color: white;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-cancel-title:hover {
+    background: #7f8c8d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-cancel-title:active {
+    transform: translateY(0);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .title-edit-mode {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .title-input {
+        width: 100%;
+    }
+
+    .btn-save-title,
+    .btn-cancel-title {
+        width: 100%;
+    }
+}
+
+/* ==================== 날짜 편집 스타일 ==================== */
+
+/* 날짜 편집 컨테이너 */
+.date-edit-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+/* 날짜 연필 버튼 스타일 */
+.btn-edit-date {
+    background: #3498db;
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.btn-edit-date:hover {
+    background: #2980b9;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-edit-date:active {
+    transform: scale(0.95);
+}
+
+/* 날짜 편집 모드 컨테이너 */
+.date-edit-mode {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background: #f8f9fa;
+    border-radius: 8px;
+    border: 2px solid #3498db;
+}
+
+/* 날짜 입력 필드 */
+.date-input {
+    flex: 1;
+    padding: 0.6rem 0.8rem;
+    font-size: 0.95rem;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    outline: none;
+    transition: border-color 0.2s ease;
+    font-family: inherit;
+}
+
+.date-input:focus {
+    border-color: #3498db;
+    box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+/* 저장/취소 버튼 */
+.btn-save-date,
+.btn-cancel-date {
+    padding: 0.6rem 1.2rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+}
+
+.btn-save-date {
+    background: #3498db;
+    color: white;
+}
+
+.btn-save-date:hover {
+    background: #2980b9;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-save-date:active {
+    transform: translateY(0);
+}
+
+.btn-cancel-date {
+    background: #95a5a6;
+    color: white;
+}
+
+.btn-cancel-date:hover {
+    background: #7f8c8d;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-cancel-date:active {
+    transform: translateY(0);
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+    .date-edit-mode {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .date-input {
+        width: 100%;
+    }
+
+    .btn-save-date,
+    .btn-cancel-date {
+        width: 100%;
+    }
+}
+</style>
+
 {% endblock %}
 
 {% block scripts %}

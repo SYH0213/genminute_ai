@@ -329,3 +329,167 @@ class DatabaseManager:
         if row:
             return row['audio_file']
         return None
+
+    def update_meeting_title(self, meeting_id, new_title):
+        """
+        회의 제목을 업데이트합니다.
+        - ChromaDB: meeting_chunk, meeting_subtopic 컬렉션 메타데이터 업데이트
+        - meeting_dialogues: 해당 meeting_id의 모든 행 업데이트
+        - meeting_minutes: 해당 meeting_id의 제목 업데이트
+
+        Args:
+            meeting_id (str): 회의 ID
+            new_title (str): 새로운 제목
+
+        Returns:
+            dict: 업데이트 결과 {'success': bool, 'updated_dialogues': int, 'updated_minutes': int, 'updated_vector': dict}
+        """
+        # ChromaDB 업데이트 먼저 수행 (순환 참조 방지를 위한 lazy import)
+        from utils.vector_db_manager import vdb_manager
+
+        # 1. ChromaDB 메타데이터 업데이트
+        vector_result = vdb_manager.update_metadata_title(meeting_id, new_title)
+
+        if not vector_result['success']:
+            # ChromaDB 업데이트 실패 시 전체 실패 처리
+            print(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
+            return {
+                'success': False,
+                'error': f"ChromaDB 업데이트 실패: {vector_result.get('error', '알 수 없는 오류')}",
+                'updated_dialogues': 0,
+                'updated_minutes': 0,
+                'updated_vector': vector_result
+            }
+
+        # 2. SQLite 업데이트 (ChromaDB 성공 후)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # 2-1. meeting_dialogues 테이블 업데이트
+            cursor.execute("""
+                UPDATE meeting_dialogues
+                SET title = ?
+                WHERE meeting_id = ?
+            """, (new_title, meeting_id))
+            updated_dialogues = cursor.rowcount
+
+            # 2-2. meeting_minutes 테이블 업데이트 (테이블이 존재하는 경우)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
+            updated_minutes = 0
+            if cursor.fetchone():
+                cursor.execute("""
+                    UPDATE meeting_minutes
+                    SET title = ?,
+                        updated_at = ?
+                    WHERE meeting_id = ?
+                """, (new_title, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), meeting_id))
+                updated_minutes = cursor.rowcount
+
+            conn.commit()
+
+            print(f"✅ SQLite 제목 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
+
+            return {
+                'success': True,
+                'updated_dialogues': updated_dialogues,
+                'updated_minutes': updated_minutes,
+                'updated_vector': vector_result
+            }
+
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ SQLite 제목 업데이트 실패: {e}")
+            print(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_dialogues': 0,
+                'updated_minutes': 0,
+                'updated_vector': vector_result
+            }
+
+        finally:
+            conn.close()
+
+    def update_meeting_date(self, meeting_id, new_date):
+        """
+        회의 날짜를 업데이트합니다.
+        - ChromaDB: meeting_chunk, meeting_subtopic 컬렉션 메타데이터 업데이트
+        - meeting_dialogues: 해당 meeting_id의 모든 행 업데이트
+        - meeting_minutes: 해당 meeting_id의 날짜 업데이트
+
+        Args:
+            meeting_id (str): 회의 ID
+            new_date (str): 새로운 날짜 (형식: "YYYY-MM-DD HH:MM:SS")
+
+        Returns:
+            dict: 업데이트 결과 {'success': bool, 'updated_dialogues': int, 'updated_minutes': int, 'updated_vector': dict}
+        """
+        # ChromaDB 업데이트 먼저 수행 (순환 참조 방지를 위한 lazy import)
+        from utils.vector_db_manager import vdb_manager
+
+        # 1. ChromaDB 메타데이터 업데이트
+        vector_result = vdb_manager.update_metadata_date(meeting_id, new_date)
+
+        if not vector_result['success']:
+            # ChromaDB 업데이트 실패 시 전체 실패 처리
+            print(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
+            return {
+                'success': False,
+                'error': f"ChromaDB 업데이트 실패: {vector_result.get('error', '알 수 없는 오류')}",
+                'updated_dialogues': 0,
+                'updated_minutes': 0,
+                'updated_vector': vector_result
+            }
+
+        # 2. SQLite 업데이트 (ChromaDB 성공 후)
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        try:
+            # 2-1. meeting_dialogues 테이블 업데이트
+            cursor.execute("""
+                UPDATE meeting_dialogues
+                SET meeting_date = ?
+                WHERE meeting_id = ?
+            """, (new_date, meeting_id))
+            updated_dialogues = cursor.rowcount
+
+            # 2-2. meeting_minutes 테이블 업데이트 (테이블이 존재하는 경우)
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
+            updated_minutes = 0
+            if cursor.fetchone():
+                cursor.execute("""
+                    UPDATE meeting_minutes
+                    SET meeting_date = ?,
+                        updated_at = ?
+                    WHERE meeting_id = ?
+                """, (new_date, datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S"), meeting_id))
+                updated_minutes = cursor.rowcount
+
+            conn.commit()
+
+            print(f"✅ SQLite 날짜 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
+
+            return {
+                'success': True,
+                'updated_dialogues': updated_dialogues,
+                'updated_minutes': updated_minutes,
+                'updated_vector': vector_result
+            }
+
+        except Exception as e:
+            conn.rollback()
+            print(f"❌ SQLite 날짜 업데이트 실패: {e}")
+            print(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
+            return {
+                'success': False,
+                'error': str(e),
+                'updated_dialogues': 0,
+                'updated_minutes': 0,
+                'updated_vector': vector_result
+            }
+
+        finally:
+            conn.close()
