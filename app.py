@@ -1,6 +1,7 @@
 from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, session
 import os
 import json
+import uuid
 import datetime as dt
 import subprocess
 from werkzeug.utils import secure_filename
@@ -395,7 +396,10 @@ def upload_and_process():
         return render_template("index.html", error="파일이 없거나 허용되지 않는 형식입니다.")
 
     try:
-        filename = secure_filename(file.filename)
+        # UUID를 이용한 고유 파일명 생성
+        original_filename = secure_filename(file.filename)
+        unique_id = uuid.uuid4().hex[:8]
+        filename = f"{unique_id}_{original_filename}"
         original_file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
 
         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
@@ -813,8 +817,8 @@ def generate_minutes(meeting_id):
                 "error": "청킹된 회의 내용을 찾을 수 없습니다. 오디오 파일을 먼저 업로드해주세요."
             }), 400
 
-        # 4. stt_manager의 generate_minutes를 이용해 회의록 생성
-        minutes_content = stt_manager.generate_minutes(title, transcript_text, chunks_content)
+        # 4. stt_manager의 generate_minutes를 이용해 회의록 생성 (meeting_date 전달)
+        minutes_content = stt_manager.generate_minutes(title, transcript_text, chunks_content, meeting_date)
 
         if not minutes_content:
             return jsonify({"success": False, "error": "회의록 생성에 실패했습니다."}), 500

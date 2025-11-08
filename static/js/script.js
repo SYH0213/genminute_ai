@@ -1,4 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
+    // === 업로드 중복 방지 (Phase 1) ===
+    checkUploadStatus();
+
     // --- Chatbot Toggle 기능 ---
     const chatbotToggleTab = document.getElementById('chatbot-toggle-tab');
     const chatbotSidebar = document.getElementById('chatbot-sidebar');
@@ -400,11 +403,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // === 중복 방지: 업로드 시작 ===
+            sessionStorage.setItem('upload_in_progress', 'true');
+            sessionStorage.setItem('upload_start_time', Date.now().toString());
+
+            // 새로고침 경고 설정
+            window.addEventListener('beforeunload', beforeUnloadHandler);
+
+            // FormData 생성 (UI 비활성화 전에 먼저 생성!)
+            const formData = new FormData(uploadForm);
+
+            // UI 비활성화 (FormData 생성 후)
+            disableUploadUI();
+
             // 프로그레스바 시작
             startProgressBar();
-
-            // FormData 생성
-            const formData = new FormData(uploadForm);
 
             try {
                 // AJAX로 파일 업로드 및 STT 처리
@@ -422,18 +435,37 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 100% 완료 표시
                     completeProgress();
 
+                    // === 중복 방지: 업로드 완료 ===
+                    sessionStorage.removeItem('upload_in_progress');
+                    sessionStorage.removeItem('upload_start_time');
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                     // 1초 후 페이지 이동
                     setTimeout(() => {
                         window.location.href = result.redirect_url || `/view/${result.meeting_id}`;
                     }, 1000);
                 } else {
                     const error = await response.json();
+
+                    // === 중복 방지: 업로드 실패 ===
+                    sessionStorage.removeItem('upload_in_progress');
+                    sessionStorage.removeItem('upload_start_time');
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                     hideProgressBar();
+                    enableUploadUI();
                     alert(`오류 발생: ${error.error || '알 수 없는 오류'}`);
                 }
             } catch (error) {
                 console.error('업로드 중 오류:', error);
+
+                // === 중복 방지: 업로드 실패 ===
+                sessionStorage.removeItem('upload_in_progress');
+                sessionStorage.removeItem('upload_start_time');
+                window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                 hideProgressBar();
+                enableUploadUI();
                 alert('업로드 중 오류가 발생했습니다. 다시 시도해 주세요.');
             }
         });
@@ -579,11 +611,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
 
+            // === 중복 방지: 스크립트 처리 시작 ===
+            sessionStorage.setItem('upload_in_progress', 'true');
+            sessionStorage.setItem('upload_start_time', Date.now().toString());
+
+            // 새로고침 경고 설정
+            window.addEventListener('beforeunload', beforeUnloadHandler);
+
+            // FormData 생성 (먼저 생성)
+            const formData = new FormData(scriptForm);
+
             // 프로그레스바 시작
             startScriptProgressBar();
-
-            // FormData 생성
-            const formData = new FormData(scriptForm);
 
             try {
                 // AJAX로 스크립트 처리
@@ -601,17 +640,34 @@ document.addEventListener('DOMContentLoaded', () => {
                     // 100% 완료 표시
                     completeScriptProgress();
 
+                    // === 중복 방지: 처리 완료 ===
+                    sessionStorage.removeItem('upload_in_progress');
+                    sessionStorage.removeItem('upload_start_time');
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                     // 1초 후 페이지 이동
                     setTimeout(() => {
                         window.location.href = result.redirect_url || `/view/${result.meeting_id}`;
                     }, 1000);
                 } else {
                     const error = await response.json();
+
+                    // === 중복 방지: 처리 실패 ===
+                    sessionStorage.removeItem('upload_in_progress');
+                    sessionStorage.removeItem('upload_start_time');
+                    window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                     hideScriptProgressBar();
                     alert(`오류 발생: ${error.error || '알 수 없는 오류'}`);
                 }
             } catch (error) {
                 console.error('스크립트 처리 중 오류:', error);
+
+                // === 중복 방지: 처리 실패 ===
+                sessionStorage.removeItem('upload_in_progress');
+                sessionStorage.removeItem('upload_start_time');
+                window.removeEventListener('beforeunload', beforeUnloadHandler);
+
                 hideScriptProgressBar();
                 alert('처리 중 오류가 발생했습니다. 다시 시도해 주세요.');
             }
@@ -685,5 +741,121 @@ document.addEventListener('DOMContentLoaded', () => {
             progressModal.classList.remove('active');
             scriptCurrentProgress = 0;
         }
+    }
+
+    // ==================== 중복 업로드 방지 헬퍼 함수 ====================
+
+    // 페이지 로드 시 업로드 상태 체크
+    function checkUploadStatus() {
+        const uploadInProgress = sessionStorage.getItem('upload_in_progress');
+        const uploadStartTime = sessionStorage.getItem('upload_start_time');
+
+        if (!uploadInProgress) {
+            return; // 진행 중인 업로드 없음
+        }
+
+        // 10분 이상 지난 경우 타임아웃 처리
+        const startTime = parseInt(uploadStartTime || '0');
+        const currentTime = Date.now();
+        const TEN_MINUTES = 10 * 60 * 1000;
+
+        if (currentTime - startTime > TEN_MINUTES) {
+            console.log('⏰ 업로드 타임아웃 (10분 경과) - 플래그 제거');
+            sessionStorage.removeItem('upload_in_progress');
+            sessionStorage.removeItem('upload_start_time');
+            return;
+        }
+
+        // 업로드 진행 중 - UI 잠금
+        console.log('⚠️ 업로드 진행 중 감지 - UI 잠금');
+        showUploadInProgressWarning();
+    }
+
+    // 업로드 진행 중 경고 UI 표시
+    function showUploadInProgressWarning() {
+        const dropZone = document.getElementById('drop-zone');
+        if (!dropZone) return;
+
+        // 기존 UI 숨기기
+        dropZone.style.display = 'none';
+
+        // 경고 메시지 생성
+        const warningDiv = document.createElement('div');
+        warningDiv.id = 'upload-warning';
+        warningDiv.style.cssText = `
+            padding: 3rem;
+            text-align: center;
+            background: #fff3cd;
+            border: 2px solid #ffc107;
+            border-radius: 12px;
+            margin: 2rem auto;
+            max-width: 600px;
+        `;
+
+        warningDiv.innerHTML = `
+            <div style="font-size: 3rem; margin-bottom: 1rem;">⚠️</div>
+            <h2 style="color: #856404; margin-bottom: 1rem;">이미 노트를 생성 중입니다</h2>
+            <p style="color: #856404; margin-bottom: 2rem;">
+                이전에 업로드한 파일이 처리 중입니다.<br>
+                완료될 때까지 기다려주세요.
+            </p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button id="force-cancel-btn" class="btn-secondary" style="padding: 0.75rem 2rem; font-size: 1rem;">
+                    강제 취소 (다시 업로드)
+                </button>
+            </div>
+        `;
+
+        dropZone.parentElement.insertBefore(warningDiv, dropZone);
+
+        // 강제 취소 버튼 이벤트
+        document.getElementById('force-cancel-btn').addEventListener('click', () => {
+            if (confirm('정말로 이전 작업을 취소하고 새로 시작하시겠습니까?\n서버에서 처리 중인 작업은 계속 진행될 수 있습니다.')) {
+                sessionStorage.removeItem('upload_in_progress');
+                sessionStorage.removeItem('upload_start_time');
+                warningDiv.remove();
+                dropZone.style.display = '';
+                enableUploadUI();
+            }
+        });
+    }
+
+    // 새로고침/페이지 이탈 경고
+    function beforeUnloadHandler(e) {
+        e.preventDefault();
+        e.returnValue = '노트를 생성 중입니다. 페이지를 나가면 작업이 취소될 수 있습니다.';
+        return e.returnValue;
+    }
+
+    // UI 비활성화
+    function disableUploadUI() {
+        const dropZone = document.getElementById('drop-zone');
+        const uploadButton = document.getElementById('upload-button');
+        const fileInput = document.getElementById('audio-file-input');
+        const submitButton = document.getElementById('submit-button');
+        const titleInput = document.querySelector('input[name="title"]');
+
+        if (dropZone) dropZone.style.pointerEvents = 'none';
+        if (dropZone) dropZone.style.opacity = '0.5';
+        if (uploadButton) uploadButton.disabled = true;
+        if (fileInput) fileInput.disabled = true;
+        if (submitButton) submitButton.disabled = true;
+        if (titleInput) titleInput.disabled = true;
+    }
+
+    // UI 재활성화
+    function enableUploadUI() {
+        const dropZone = document.getElementById('drop-zone');
+        const uploadButton = document.getElementById('upload-button');
+        const fileInput = document.getElementById('audio-file-input');
+        const submitButton = document.getElementById('submit-button');
+        const titleInput = document.querySelector('input[name="title"]');
+
+        if (dropZone) dropZone.style.pointerEvents = '';
+        if (dropZone) dropZone.style.opacity = '';
+        if (uploadButton) uploadButton.disabled = false;
+        if (fileInput) fileInput.disabled = false;
+        if (submitButton) submitButton.disabled = false;
+        if (titleInput) titleInput.disabled = false;
     }
 });

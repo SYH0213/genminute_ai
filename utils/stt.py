@@ -221,7 +221,7 @@ class STTManager:
             print(f"❌ Gemini 요약 생성 중 오류 발생: {e}")
             return None
 
-    def generate_minutes(self, title: str, transcript_text: str, summary_content: str):
+    def generate_minutes(self, title: str, transcript_text: str, summary_content: str, meeting_date: str):
         """
         문단 요약을 기반으로 정식 회의록을 생성합니다.
 
@@ -229,14 +229,23 @@ class STTManager:
             title (str): 회의 제목
             transcript_text (str): 원본 회의 스크립트
             summary_content (str): 이미 생성된 문단 요약 내용
+            meeting_date (str): 회의 일시 (YYYY-MM-DD HH:MM:SS 형식)
 
         Returns:
             str: 생성된 회의록 내용 (마크다운 형식)
         """
+        # 날짜 포맷 변환: 2025-11-08 14:30:25 → 2025년 11월 08일 14시 30분
+        from datetime import datetime
+        try:
+            dt_obj = datetime.strptime(meeting_date, "%Y-%m-%d %H:%M:%S")
+            meeting_date_formatted = dt_obj.strftime("%Y년 %m월 %d일 %H시 %M분")
+        except:
+            meeting_date_formatted = meeting_date  # 변환 실패 시 원본 사용
+
         prompt_text = f"""당신은 회의록을 전문적으로 작성하는 AI 어시스턴트입니다.
 아래 제공되는 "회의 스크립트"와 "문단 요약"을 분석하여, 주어진 "마크다운 템플릿"의 각 항목을 채워주세요.
 
-스크립트에서 직접 추출 불가능한 정보(예: 회의명, 일시, 기한)는 스크립트 내용을 바탕으로 적절히 추정하거나,
+일시는 이미 제공되므로 그대로 사용하고, 스크립트에서 직접 추출 불가능한 정보(예: 회의명, 기한)는 스크립트 내용을 바탕으로 적절히 추정하거나,
 추정이 불가능하면 '미정' 또는 '정보 없음'으로 표시해주세요.
 
 
@@ -257,10 +266,10 @@ class STTManager:
 
 --- 마크다운 템플릿 (이 형식 정확히 따르세요) ---
 
-# {{회의명}}
+# {{{{회의명}}}}
 
-**일시**: {{일시}}
-**참석자**: {{참석자}}
+**일시**: {meeting_date_formatted}
+**참석자**: {{{{참석자}}}}
 
 
 ## 회의 요약
