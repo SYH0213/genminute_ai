@@ -69,6 +69,9 @@
 
             <!-- 문단 요약 탭 -->
             <div id="summary-tab" class="tab-content">
+                <button id="copy-summary-btn" class="btn-copy-content" title="문단 요약 복사">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
                 <div id="summary-container" class="summary-container">
                     <p class="summary-placeholder">문단 요약을 불러오는 중입니다...</p>
                 </div>
@@ -76,6 +79,9 @@
 
             <!-- 회의록 탭 -->
             <div id="minutes-tab" class="tab-content">
+                <button id="copy-minutes-btn" class="btn-copy-content" title="회의록 복사">
+                    <i class="fa-regular fa-copy"></i>
+                </button>
                 <div id="minutes-container" class="minutes-container minutes-empty">
                     <p class="minutes-placeholder">회의록 생성 버튼을 눌러 정식 회의록을 작성하세요.</p>
                     <button id="generate-minutes-button" class="btn-primary">회의록 생성</button>
@@ -355,6 +361,75 @@
     .btn-cancel-date {
         width: 100%;
     }
+}
+
+/* ==================== 복사 버튼 스타일 ==================== */
+
+/* 탭 컨텐츠를 relative로 설정 */
+.tab-content {
+    position: relative;
+}
+
+/* 복사 버튼 스타일 */
+.btn-copy-content {
+    position: absolute;
+    top: 1rem;
+    right: 1rem;
+    width: 40px;
+    height: 40px;
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s ease;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+    z-index: 10;
+    color: #666;
+    font-size: 1.1rem;
+}
+
+.btn-copy-content:hover {
+    background: #f0f0f0;
+    border-color: #3498db;
+    color: #3498db;
+    transform: scale(1.05);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+}
+
+.btn-copy-content:active {
+    transform: scale(0.95);
+}
+
+/* 복사 성공 애니메이션 */
+.btn-copy-content.copied {
+    background: #27ae60;
+    border-color: #27ae60;
+    color: white;
+}
+
+.btn-copy-content.copied i {
+    display: none;
+}
+
+.btn-copy-content.copied::after {
+    content: '✓';
+    position: absolute;
+    color: white;
+    font-size: 1.3rem;
+    font-weight: bold;
+}
+
+/* 복사 버튼 숨기기 (로딩 중이거나 비어있을 때) */
+.tab-content.empty .btn-copy-content {
+    display: none;
+}
+
+/* 회의록 탭의 복사 버튼은 기본적으로 숨김 (회의록 생성 전) */
+#copy-minutes-btn {
+    display: none;
 }
 </style>
 

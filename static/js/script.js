@@ -98,10 +98,28 @@ document.addEventListener('DOMContentLoaded', () => {
         chatbotSendBtn.addEventListener('click', sendChatMessage);
     }
 
+    // 전송 중 상태 플래그
+    let isSending = false;
+
     // 메시지 전송 함수
     async function sendChatMessage() {
         const message = chatbotInput.value.trim();
         if (!message) return;
+
+        // 이미 전송 중이면 무시
+        if (isSending) {
+            console.log('⚠️ 이미 메시지를 전송 중입니다.');
+            return;
+        }
+
+        // 전송 중 상태로 변경
+        isSending = true;
+
+        // 입력 필드와 버튼 비활성화
+        chatbotInput.disabled = true;
+        chatbotSendBtn.disabled = true;
+        chatbotSendBtn.style.opacity = '0.5';
+        chatbotSendBtn.style.cursor = 'not-allowed';
 
         // 사용자 메시지 추가
         addChatMessage('user', message);
@@ -145,6 +163,14 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('챗봇 API 호출 오류:', error);
             loadingMsg.remove();
             addChatMessage('assistant', '죄송합니다. 서버와 통신 중 오류가 발생했습니다. 다시 시도해 주세요.');
+        } finally {
+            // 전송 완료 - UI 재활성화
+            isSending = false;
+            chatbotInput.disabled = false;
+            chatbotSendBtn.disabled = false;
+            chatbotSendBtn.style.opacity = '1';
+            chatbotSendBtn.style.cursor = 'pointer';
+            chatbotInput.focus(); // 입력 필드에 포커스
         }
     }
 

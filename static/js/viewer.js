@@ -402,6 +402,12 @@ document.addEventListener('DOMContentLoaded', () => {
             .replace(/^---$/gm, '<hr>');
 
         minutesContainer.innerHTML = `<div class="minutes-content">${htmlContent}</div>`;
+
+        // 회의록이 표시되면 복사 버튼 표시
+        const copyMinutesBtn = document.getElementById('copy-minutes-btn');
+        if (copyMinutesBtn) {
+            copyMinutesBtn.style.display = 'flex';
+        }
     }
 
     // === 화자별 점유율 모달 관련 로직 ===
@@ -801,5 +807,97 @@ document.addEventListener('DOMContentLoaded', () => {
                 cancelDateEdit();
             }
         });
+    }
+
+    // ==================== 복사 기능 ====================
+
+    const copySummaryBtn = document.getElementById('copy-summary-btn');
+    const copyMinutesBtn = document.getElementById('copy-minutes-btn');
+
+    // 문단 요약 복사
+    if (copySummaryBtn) {
+        copySummaryBtn.addEventListener('click', async () => {
+            const summaryContainer = document.getElementById('summary-container');
+            const text = extractTextFromContainer(summaryContainer);
+
+            if (!text || text.trim() === '') {
+                alert('복사할 내용이 없습니다.');
+                return;
+            }
+
+            await copyToClipboard(text, copySummaryBtn);
+        });
+    }
+
+    // 회의록 복사
+    if (copyMinutesBtn) {
+        copyMinutesBtn.addEventListener('click', async () => {
+            const minutesContainer = document.getElementById('minutes-container');
+            const text = extractTextFromContainer(minutesContainer);
+
+            if (!text || text.trim() === '') {
+                alert('복사할 내용이 없습니다.');
+                return;
+            }
+
+            await copyToClipboard(text, copyMinutesBtn);
+        });
+    }
+
+    // 컨테이너에서 텍스트 추출 함수
+    function extractTextFromContainer(container) {
+        // 플레이스홀더 텍스트 제외
+        const clone = container.cloneNode(true);
+
+        // 버튼 요소 제거
+        const buttons = clone.querySelectorAll('button');
+        buttons.forEach(btn => btn.remove());
+
+        // 플레이스홀더 제거
+        const placeholders = clone.querySelectorAll('.summary-placeholder, .minutes-placeholder');
+        placeholders.forEach(p => p.remove());
+
+        return clone.innerText.trim();
+    }
+
+    // 클립보드 복사 함수
+    async function copyToClipboard(text, button) {
+        try {
+            await navigator.clipboard.writeText(text);
+
+            // 성공 애니메이션
+            button.classList.add('copied');
+
+            setTimeout(() => {
+                button.classList.remove('copied');
+            }, 2000);
+
+            console.log('✅ 클립보드에 복사되었습니다.');
+        } catch (error) {
+            console.error('❌ 복사 실패:', error);
+
+            // 폴백: 구형 브라우저용
+            try {
+                const textarea = document.createElement('textarea');
+                textarea.value = text;
+                textarea.style.position = 'fixed';
+                textarea.style.opacity = '0';
+                document.body.appendChild(textarea);
+                textarea.select();
+                document.execCommand('copy');
+                document.body.removeChild(textarea);
+
+                // 성공 애니메이션
+                button.classList.add('copied');
+                setTimeout(() => {
+                    button.classList.remove('copied');
+                }, 2000);
+
+                console.log('✅ 클립보드에 복사되었습니다 (폴백 방식).');
+            } catch (fallbackError) {
+                console.error('❌ 폴백 복사도 실패:', fallbackError);
+                alert('복사에 실패했습니다. 브라우저가 클립보드 접근을 차단했을 수 있습니다.');
+            }
+        }
     }
 });
