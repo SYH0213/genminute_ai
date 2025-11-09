@@ -25,18 +25,40 @@
         </div>
     </form>
 
-    <!-- 프로그레스바 모달 -->
+    <!-- 프로그레스 모달 -->
     <div id="progress-modal" class="progress-modal">
         <div class="progress-modal-content">
-            <div class="progress-icon">🎤</div>
-            <h2>음성 인식 중...</h2>
-            <p id="progress-status">파일을 업로드하고 있습니다</p>
-            <div class="progress-bar-container">
-                <div class="progress-bar" id="progress-bar">
-                    <span class="progress-text" id="progress-text">0%</span>
+            <!-- 단계 표시 -->
+            <div class="step-indicator">
+                <div class="step" id="step-upload">
+                    <div class="step-icon">📤</div>
+                    <div class="step-label">업로드</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step" id="step-stt">
+                    <div class="step-icon">🎤</div>
+                    <div class="step-label">음성인식</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step" id="step-summary">
+                    <div class="step-icon">📝</div>
+                    <div class="step-label">요약생성</div>
+                </div>
+                <div class="step-arrow">→</div>
+                <div class="step" id="step-mindmap">
+                    <div class="step-icon">🗺️</div>
+                    <div class="step-label">마인드맵</div>
                 </div>
             </div>
-            <p class="progress-tip">평균 처리 시간: 2-3분</p>
+
+            <!-- 현재 진행 아이콘 및 상태 -->
+            <div class="progress-icon" id="progress-icon">📤</div>
+            <p id="progress-status">파일을 업로드하고 있습니다...</p>
+
+            <!-- 로딩 스피너 -->
+            <div class="spinner"></div>
+
+            <p class="progress-tip">잠시만 기다려주세요</p>
         </div>
     </div>
 </main>

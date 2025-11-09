@@ -388,6 +388,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         // 폼 제출 시 유효성 검사 및 프로그레스바 표시
+        // 폼 제출 시 SSE로 실시간 상태 수신
         uploadForm.addEventListener('submit', async (event) => {
             event.preventDefault(); // 기본 폼 제출 막기
 
@@ -416,24 +417,103 @@ document.addEventListener('DOMContentLoaded', () => {
             // UI 비활성화 (FormData 생성 후)
             disableUploadUI();
 
-            // 프로그레스바 시작
-            startProgressBar();
+            // 진행 모달 표시
+            const progressModal = document.getElementById('progress-modal');
+            if (progressModal) {
+                progressModal.classList.add('active');
+            }
 
+            // SSE로 업로드 요청
             try {
-                // AJAX로 파일 업로드 및 STT 처리
+                // 일반 fetch로 먼저 시작 (파일 업로드)
                 const response = await fetch(uploadForm.action, {
                     method: 'POST',
-                    headers: {
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
                     body: formData
                 });
 
-                if (response.ok) {
-                    const result = await response.json();
+                if (!response.ok || !response.headers.get('content-type')?.includes('text/event-stream')) {
+                    throw new Error('서버에서 올바른 응답을 받지 못했습니다.');
+                }
 
-                    // 100% 완료 표시
-                    completeProgress();
+                // EventSource는 GET만 지원하므로, fetch의 ReadableStream 사용
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                let buffer = '';
+
+                while (true) {
+                    const { value, done } = await reader.read();
+                    if (done) break;
+
+                    buffer += decoder.decode(value, { stream: true });
+                    const lines = buffer.split('\n\n');
+                    buffer = lines.pop() || ''; // 마지막 불완전한 줄은 buffer에 유지
+
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            const data = JSON.parse(line.substring(6));
+                            handleSSEMessage(data);
+                        }
+                    }
+                }
+
+            } catch (error) {
+                console.error('업로드 중 오류:', error);
+
+                // 모달에 오류 표시 (handleSSEMessage의 error 케이스와 동일한 방식)
+                handleSSEMessage({
+                    step: 'error',
+                    message: '서버와 통신 중 오류가 발생했습니다. 다시 시도해 주세요.'
+                });
+            }
+        });
+
+        // SSE 메시지 처리 함수
+        function handleSSEMessage(data) {
+            const progressStatus = document.getElementById('progress-status');
+            const progressIcon = document.getElementById('progress-icon');
+            const stepUpload = document.getElementById('step-upload');
+            const stepSTT = document.getElementById('step-stt');
+            const stepSummary = document.getElementById('step-summary');
+            const stepMindmap = document.getElementById('step-mindmap');
+
+            // 모든 단계 초기화
+            [stepUpload, stepSTT, stepSummary, stepMindmap].forEach(el => {
+                if (el) el.classList.remove('active', 'completed');
+            });
+
+            // 현재 단계 업데이트
+            switch (data.step) {
+                case 'upload':
+                    if (progressIcon) progressIcon.textContent = data.icon || '📤';
+                    if (progressStatus) progressStatus.textContent = data.message;
+                    if (stepUpload) stepUpload.classList.add('active');
+                    break;
+
+                case 'stt':
+                    if (progressIcon) progressIcon.textContent = data.icon || '🎤';
+                    if (progressStatus) progressStatus.textContent = data.message;
+                    if (stepUpload) stepUpload.classList.add('completed');
+                    if (stepSTT) stepSTT.classList.add('active');
+                    break;
+
+                case 'summary':
+                    if (progressIcon) progressIcon.textContent = data.icon || '📝';
+                    if (progressStatus) progressStatus.textContent = data.message;
+                    if (stepSTT) stepSTT.classList.add('completed');
+                    if (stepSummary) stepSummary.classList.add('active');
+                    break;
+
+                case 'mindmap':
+                    if (progressIcon) progressIcon.textContent = data.icon || '🗺️';
+                    if (progressStatus) progressStatus.textContent = data.message;
+                    if (stepSummary) stepSummary.classList.add('completed');
+                    if (stepMindmap) stepMindmap.classList.add('active');
+                    break;
+
+                case 'complete':
+                    if (progressIcon) progressIcon.textContent = data.icon || '✅';
+                    if (progressStatus) progressStatus.textContent = data.message;
+                    if (stepMindmap) stepMindmap.classList.add('completed');
 
                     // === 중복 방지: 업로드 완료 ===
                     sessionStorage.removeItem('upload_in_progress');
@@ -442,128 +522,114 @@ document.addEventListener('DOMContentLoaded', () => {
 
                     // 1초 후 페이지 이동
                     setTimeout(() => {
-                        window.location.href = result.redirect_url || `/view/${result.meeting_id}`;
+                        window.location.href = data.redirect;
                     }, 1000);
-                } else {
-                    const error = await response.json();
+                    break;
 
-                    // === 중복 방지: 업로드 실패 ===
-                    sessionStorage.removeItem('upload_in_progress');
-                    sessionStorage.removeItem('upload_start_time');
-                    window.removeEventListener('beforeunload', beforeUnloadHandler);
-
-                    hideProgressBar();
-                    enableUploadUI();
-                    alert(`오류 발생: ${error.error || '알 수 없는 오류'}`);
-                }
-            } catch (error) {
-                console.error('업로드 중 오류:', error);
-
-                // === 중복 방지: 업로드 실패 ===
-                sessionStorage.removeItem('upload_in_progress');
-                sessionStorage.removeItem('upload_start_time');
-                window.removeEventListener('beforeunload', beforeUnloadHandler);
-
-                hideProgressBar();
-                enableUploadUI();
-                alert('업로드 중 오류가 발생했습니다. 다시 시도해 주세요.');
-            }
-        });
-
-        // 프로그레스바 관련 변수
-        let progressInterval = null;
-        let currentProgress = 0;
-        let progressPhase = 1; // 1: 0-80% (2분), 2: 80-100% (단계별)
-
-        // 프로그레스바 시작 함수
-        function startProgressBar() {
-            const progressModal = document.getElementById('progress-modal');
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
-            const progressStatus = document.getElementById('progress-status');
-
-            progressModal.classList.add('active');
-            currentProgress = 0;
-            progressPhase = 1;
-
-            // Phase 1: 0-80% (120초 = 2분)
-            const phase1Duration = 120000; // 120초 = 2분
-            const phase1Target = 80;
-            const phase1Interval = 100; // 100ms마다 업데이트
-            const phase1Increment = (phase1Target / phase1Duration) * phase1Interval;
-
-            progressStatus.textContent = '음성 파일을 분석하고 있습니다...';
-
-            progressInterval = setInterval(() => {
-                if (progressPhase === 1) {
-                    currentProgress += phase1Increment;
-
-                    if (currentProgress >= phase1Target) {
-                        currentProgress = phase1Target;
-                        progressPhase = 2;
-                        progressStatus.textContent = '음성 인식을 완료하고 있습니다...';
-
-                        // Phase 2로 전환: 80-100% (10단계, 각 2%)
-                        clearInterval(progressInterval);
-                        startPhase2();
+                case 'error':
+                    // 오류 메시지를 모달 안에 표시
+                    if (progressIcon) progressIcon.textContent = '❌';
+                    if (progressStatus) {
+                        progressStatus.textContent = data.message || '업로드 중 오류가 발생했습니다.';
+                        progressStatus.style.color = '#e74c3c';
+                        progressStatus.style.fontWeight = 'bold';
                     }
 
-                    updateProgressBar(currentProgress);
-                }
-            }, phase1Interval);
+                    // 스피너 숨기기
+                    const spinner = document.querySelector('.spinner');
+                    if (spinner) spinner.style.display = 'none';
+
+                    // 단계 표시 숨기기
+                    const stepIndicator = document.querySelector('.step-indicator');
+                    if (stepIndicator) stepIndicator.style.display = 'none';
+
+                    // 팁 메시지를 버튼으로 교체
+                    const progressTip = document.querySelector('.progress-tip');
+                    if (progressTip) {
+                        progressTip.innerHTML = `
+                            <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 2rem;">
+                                <button id="error-close-btn" class="btn-secondary" style="padding: 0.75rem 2rem;">닫기</button>
+                                <button id="error-retry-btn" class="btn-primary" style="padding: 0.75rem 2rem;">다시 시도</button>
+                            </div>
+                        `;
+
+                        // 닫기 버튼 이벤트
+                        document.getElementById('error-close-btn').addEventListener('click', () => {
+                            const progressModal = document.getElementById('progress-modal');
+                            if (progressModal) {
+                                progressModal.classList.remove('active');
+                            }
+
+                            // === 중복 방지: 업로드 실패 ===
+                            sessionStorage.removeItem('upload_in_progress');
+                            sessionStorage.removeItem('upload_start_time');
+                            window.removeEventListener('beforeunload', beforeUnloadHandler);
+
+                            enableUploadUI();
+
+                            // 모달 초기화
+                            resetProgressModal();
+                        });
+
+                        // 다시 시도 버튼 이벤트
+                        document.getElementById('error-retry-btn').addEventListener('click', () => {
+                            const progressModal = document.getElementById('progress-modal');
+                            if (progressModal) {
+                                progressModal.classList.remove('active');
+                            }
+
+                            // === 중복 방지: 업로드 실패 ===
+                            sessionStorage.removeItem('upload_in_progress');
+                            sessionStorage.removeItem('upload_start_time');
+                            window.removeEventListener('beforeunload', beforeUnloadHandler);
+
+                            enableUploadUI();
+
+                            // 모달 초기화
+                            resetProgressModal();
+
+                            // 폼 자동 재제출 (선택사항)
+                            // uploadForm.dispatchEvent(new Event('submit'));
+                        });
+                    }
+                    break;
+            }
         }
 
-        // Phase 2: 80-100% (10단계)
-        function startPhase2() {
-            let step = 0;
-            const totalSteps = 10;
-            const stepIncrement = 2; // 2%씩 증가
-            const stepInterval = 500; // 0.5초마다
+        // 모달 초기화 함수
+        function resetProgressModal() {
+            // 아이콘 초기화
+            const progressIcon = document.getElementById('progress-icon');
+            if (progressIcon) progressIcon.textContent = '📤';
 
-            const phase2Interval = setInterval(() => {
-                if (step < totalSteps) {
-                    currentProgress += stepIncrement;
-                    updateProgressBar(currentProgress);
-                    step++;
-                } else {
-                    clearInterval(phase2Interval);
-                }
-            }, stepInterval);
-
-            progressInterval = phase2Interval;
-        }
-
-        // 프로그레스바 업데이트
-        function updateProgressBar(percent) {
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
-
-            const displayPercent = Math.min(Math.round(percent), 99); // 최대 99%까지만 표시
-            progressBar.style.width = displayPercent + '%';
-            progressText.textContent = displayPercent + '%';
-        }
-
-        // 프로그레스바 완료
-        function completeProgress() {
-            clearInterval(progressInterval);
-
-            const progressBar = document.getElementById('progress-bar');
-            const progressText = document.getElementById('progress-text');
+            // 상태 메시지 초기화
             const progressStatus = document.getElementById('progress-status');
+            if (progressStatus) {
+                progressStatus.textContent = '파일을 업로드하고 있습니다...';
+                progressStatus.style.color = '';
+                progressStatus.style.fontWeight = '';
+            }
 
-            currentProgress = 100;
-            progressBar.style.width = '100%';
-            progressText.textContent = '100%';
-            progressStatus.textContent = '완료! 페이지를 이동합니다...';
-        }
+            // 스피너 다시 표시
+            const spinner = document.querySelector('.spinner');
+            if (spinner) spinner.style.display = '';
 
-        // 프로그레스바 숨기기
-        function hideProgressBar() {
-            clearInterval(progressInterval);
-            const progressModal = document.getElementById('progress-modal');
-            progressModal.classList.remove('active');
-            currentProgress = 0;
-            progressPhase = 1;
+            // 단계 표시 다시 표시
+            const stepIndicator = document.querySelector('.step-indicator');
+            if (stepIndicator) stepIndicator.style.display = '';
+
+            // 팁 메시지 복원
+            const progressTip = document.querySelector('.progress-tip');
+            if (progressTip) {
+                progressTip.innerHTML = '잠시만 기다려주세요';
+                progressTip.style.color = '';
+            }
+
+            // 모든 단계 초기화
+            const steps = document.querySelectorAll('.step');
+            steps.forEach(step => {
+                step.classList.remove('active', 'completed');
+            });
         }
 
         // 파일 처리 및 유효성 검사 함수

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, session
+from flask import Flask, render_template, request, jsonify, redirect, url_for, send_from_directory, session, Response, stream_with_context
 import os
 import json
 import uuid
@@ -391,130 +391,113 @@ def upload_script():
 @app.route("/upload", methods=["POST"])
 @login_required
 def upload_and_process():
+    """SSE 방식으로 실시간 진행 상황을 스트리밍"""
     import datetime
     import threading
-    thread_id = threading.current_thread().name
-    timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-    print(f"\n[{timestamp}][{thread_id}] 📥 업로드 요청 수신")
-
-    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json
-
+    
     # 현재 로그인한 사용자 ID
     owner_id = session['user_id']
-
+    
     # 제목 검증
     title = request.form.get('title', '').strip()
     is_valid, error_message = validate_title(title)
     if not is_valid:
-        if is_ajax:
-            return jsonify({"success": False, "error": error_message}), 400
         return render_template("index.html", error=error_message)
-
+    
     # 오디오 파일 검증
     if 'audio_file' not in request.files:
-        if is_ajax:
-            return jsonify({"success": False, "error": "오디오 파일이 없습니다."}), 400
         return render_template("index.html", error="오디오 파일이 없습니다.")
-
+    
     file = request.files['audio_file']
     if file.filename == '' or not allowed_file(file.filename):
-        if is_ajax:
-            return jsonify({"success": False, "error": "파일이 없거나 허용되지 않는 형식입니다."}), 400
         return render_template("index.html", error="파일이 없거나 허용되지 않는 형식입니다.")
+    
+    # 파일 준비 및 저장 (generator 외부에서 먼저 저장)
+    original_filename = secure_filename(file.filename)
+    unique_id = uuid.uuid4().hex[:8]
+    filename = f"{unique_id}_{original_filename}"
+    original_file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    meeting_date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    file_ext = filename.rsplit('.', 1)[1].lower()
+    is_video = (file_ext == 'mp4')
 
-    try:
-        # UUID를 이용한 고유 파일명 생성
-        original_filename = secure_filename(file.filename)
-        unique_id = uuid.uuid4().hex[:8]
-        filename = f"{unique_id}_{original_filename}"
-        original_file_path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
+    # 파일 저장 (generator 시작 전에 완료)
+    timestamp = dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    thread_id = threading.current_thread().name
+    print(f"\n[{timestamp}][{thread_id}] 📥 업로드 요청 수신")
+    print(f"[{timestamp}][{thread_id}] 💾 파일 저장 시작: {filename}")
+    file.save(original_file_path)
+    timestamp = dt.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{timestamp}][{thread_id}] ✅ 파일 저장 완료: {filename}")
 
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        print(f"[{timestamp}][{thread_id}] 💾 파일 저장 시작: {filename}")
+    # Generator 함수로 SSE 스트리밍
+    def generate():
+        thread_id = threading.current_thread().name
 
-        file.save(original_file_path)
-
-        timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        print(f"[{timestamp}][{thread_id}] ✅ 파일 저장 완료: {filename}")
-
-        # 업로드 시점의 현재 시간을 회의 일시로 사용
-        meeting_date = dt.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-        # 파일 확장자 확인
-        file_ext = filename.rsplit('.', 1)[1].lower()
-        is_video = (file_ext == 'mp4')
-
-        # 비디오 파일인 경우 오디오로 변환
-        temp_audio_path = None
-        if is_video:
-            print(f"🎬 비디오 파일 감지: {filename}")
-            # WAV 파일명 생성 (원본명_audio.wav)
-            base_name = filename.rsplit('.', 1)[0]
-            temp_audio_filename = f"{base_name}_audio.wav"
-            temp_audio_path = os.path.join(app.config["UPLOAD_FOLDER"], temp_audio_filename)
-
-            # 비디오 → 오디오 변환
-            if not convert_video_to_audio(original_file_path, temp_audio_path):
-                if is_ajax:
-                    return jsonify({"success": False, "error": "비디오를 오디오로 변환하는 데 실패했습니다."}), 500
-                return render_template("index.html", error="비디오를 오디오로 변환하는 데 실패했습니다.")
-
-            # STT는 변환된 오디오 파일로 처리
-            audio_path_for_stt = temp_audio_path
-        else:
-            # 오디오 파일은 그대로 사용
-            audio_path_for_stt = original_file_path
-
-        # STT 처리
-        segments = stt_manager.transcribe_audio(audio_path_for_stt)
-
-        if not segments:
-            # STT 실패 시 임시 WAV 파일 삭제
-            if temp_audio_path and os.path.exists(temp_audio_path):
-                os.remove(temp_audio_path)
-            if is_ajax:
-                return jsonify({"success": False, "error": "음성 인식에 실패했습니다. API 키 등을 확인해주세요."}), 500
-            return render_template("index.html", error="음성 인식에 실패했습니다. API 키 등을 확인해주세요.")
-
-        # 1. SQLite DB에 개별 대화 저장 (원본 파일명 사용 - MP4 또는 오디오)
-        meeting_id = db.save_stt_to_db(segments, filename, title, meeting_date, owner_id)
-
-        # STT 처리 완료 후 임시 WAV 파일 삭제
-        if temp_audio_path and os.path.exists(temp_audio_path):
-            try:
-                os.remove(temp_audio_path)
-                print(f"🗑️  임시 오디오 파일 삭제 완료: {temp_audio_path}")
-            except Exception as e:
-                print(f"⚠️ 임시 오디오 파일 삭제 실패: {e}")
-
-        # 2. Vector DB에 대화록을 의미적 청크로 저장
         try:
+            # Step 1: 파일 업로드 완료
+            yield f"data: {json.dumps({'step': 'upload', 'message': '파일 업로드가 완료되었습니다...', 'icon': '📤'})}\n\n"
+            
+            # 비디오 파일인 경우 오디오로 변환
+            temp_audio_path = None
+            if is_video:
+                print(f"🎬 비디오 파일 감지: {filename}")
+                base_name = filename.rsplit('.', 1)[0]
+                temp_audio_filename = f"{base_name}_audio.wav"
+                temp_audio_path = os.path.join(app.config["UPLOAD_FOLDER"], temp_audio_filename)
+                
+                if not convert_video_to_audio(original_file_path, temp_audio_path):
+                    yield f"data: {json.dumps({'step': 'error', 'message': '비디오를 오디오로 변환하는 데 실패했습니다.'})}\n\n"
+                    return
+                
+                audio_path_for_stt = temp_audio_path
+            else:
+                audio_path_for_stt = original_file_path
+            
+            # Step 2: 음성 인식
+            yield f"data: {json.dumps({'step': 'stt', 'message': '회의 음성을 텍스트로 변환하고 있습니다...', 'icon': '🎤'})}\n\n"
+            
+            segments = stt_manager.transcribe_audio(audio_path_for_stt)
+            
+            if not segments:
+                if temp_audio_path and os.path.exists(temp_audio_path):
+                    os.remove(temp_audio_path)
+                yield f"data: {json.dumps({'step': 'error', 'message': '음성 인식에 실패했습니다.'})}\n\n"
+                return
+            
+            # SQLite DB에 저장
+            meeting_id = db.save_stt_to_db(segments, filename, title, meeting_date, owner_id)
+            
+            # 임시 WAV 파일 삭제
+            if temp_audio_path and os.path.exists(temp_audio_path):
+                try:
+                    os.remove(temp_audio_path)
+                    print(f"🗑️  임시 오디오 파일 삭제 완료: {temp_audio_path}")
+                except Exception as e:
+                    print(f"⚠️ 임시 오디오 파일 삭제 실패: {e}")
+            
+            # Vector DB에 저장
             all_segments = db.get_segments_by_meeting_id(meeting_id)
             if all_segments:
-                # 메타데이터는 첫 번째 세그먼트에서 가져옴
                 first_segment = all_segments[0]
-                # segments를 직접 전달하여 의미적 청킹 수행
                 vdb_manager.add_meeting_as_chunk(
                     meeting_id=meeting_id,
                     title=first_segment['title'],
                     meeting_date=first_segment['meeting_date'],
                     audio_file=first_segment['audio_file'],
-                    segments=all_segments  # 전체 segments 전달
+                    segments=all_segments
                 )
                 print(f"✅ meeting_chunks에 저장 완료 (meeting_id: {meeting_id})")
-
-                # 3. 청킹 저장 후 바로 문단 요약 자동 생성
+                
+                # Step 3: 문단 요약 생성
+                yield f"data: {json.dumps({'step': 'summary', 'message': '회의 내용을 분석하고 요약하고 있습니다...', 'icon': '📝'})}\n\n"
+                
                 try:
                     print(f"🤖 문단 요약 자동 생성 시작 (meeting_id: {meeting_id})")
-
-                    # transcript_text 생성
                     transcript_text = " ".join([row['segment'] for row in all_segments])
-
-                    # subtopic_generate를 이용해 요약 생성
                     summary_content = stt_manager.subtopic_generate(first_segment['title'], transcript_text)
-
+                    
                     if summary_content:
-                        # meeting_subtopic DB에 저장
                         vdb_manager.add_meeting_as_subtopic(
                             meeting_id=meeting_id,
                             title=first_segment['title'],
@@ -523,19 +506,18 @@ def upload_and_process():
                             summary_content=summary_content
                         )
                         print(f"✅ 문단 요약 생성 및 저장 완료 (meeting_id: {meeting_id})")
-
-                        # 4. 문단 요약 성공 후 마인드맵 키워드 자동 생성
+                        
+                        # Step 4: 마인드맵 생성
+                        yield f"data: {json.dumps({'step': 'mindmap', 'message': '마인드맵을 생성하고 있습니다...', 'icon': '🗺️'})}\n\n"
+                        
                         try:
                             print(f"🗺️ 마인드맵 키워드 자동 생성 시작 (meeting_id: {meeting_id})")
-
-                            # 마인드맵 키워드 생성
                             mindmap_content = stt_manager.extract_mindmap_keywords(
                                 summary_content,
                                 first_segment['title']
                             )
-
+                            
                             if mindmap_content:
-                                # SQLite DB에 저장
                                 db.save_mindmap(
                                     meeting_id=meeting_id,
                                     mindmap_content=mindmap_content
@@ -543,48 +525,33 @@ def upload_and_process():
                                 print(f"✅ 마인드맵 키워드 생성 및 저장 완료 (meeting_id: {meeting_id})")
                             else:
                                 print(f"⚠️ 마인드맵 키워드 생성 실패 (meeting_id: {meeting_id})")
-
+                        
                         except Exception as mindmap_error:
                             print(f"⚠️ 마인드맵 키워드 자동 생성 중 오류 발생: {mindmap_error}")
                             import traceback
                             traceback.print_exc()
-                            # 마인드맵 생성 실패해도 업로드는 성공으로 처리
-
+                    
                     else:
                         print(f"⚠️ 문단 요약 생성 실패 (meeting_id: {meeting_id})")
-
+                
                 except Exception as summary_error:
                     print(f"⚠️ 문단 요약 자동 생성 중 오류 발생: {summary_error}")
                     import traceback
                     traceback.print_exc()
-                    # 요약 생성 실패해도 업로드는 성공으로 처리
-
-        except Exception as vdb_error:
-            print(f"❌ Vector DB 저장 중 오류 발생: {vdb_error}")
+            
+            # Step 5: 완료
+            redirect_url = url_for('view_meeting', meeting_id=meeting_id)
+            yield f"data: {json.dumps({'step': 'complete', 'message': '노트 생성이 완료되었습니다!', 'redirect': redirect_url, 'icon': '✅'})}\n\n"
+        
+        except Exception as e:
+            print(f"❌ 오류 발생: {e}")
             import traceback
             traceback.print_exc()
-            # 벡터 DB 저장에 실패해도 주요 기능은 계속 동작하도록 일단 넘어감
+            yield f"data: {json.dumps({'step': 'error', 'message': f'서버 처리 중 오류가 발생했습니다: {str(e)}'})}\n\n"
+    
+    return Response(stream_with_context(generate()), mimetype='text/event-stream')
 
-        # 4. 결과를 보여주는 뷰어 페이지로 리디렉션
-        # AJAX 요청인 경우 JSON 응답
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json:
-            return jsonify({
-                "success": True,
-                "meeting_id": meeting_id,
-                "redirect_url": url_for('view_meeting', meeting_id=meeting_id)
-            })
-        else:
-            return redirect(url_for('view_meeting', meeting_id=meeting_id))
 
-    except Exception as e:
-        # AJAX 요청인 경우 JSON 에러 응답
-        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.accept_mimetypes.accept_json:
-            return jsonify({
-                "success": False,
-                "error": f"서버 처리 중 오류가 발생했습니다: {e}"
-            }), 500
-        else:
-            return render_template("index.html", error=f"서버 처리 중 오류가 발생했습니다: {e}")
 
 @app.route("/notes")
 @login_required
