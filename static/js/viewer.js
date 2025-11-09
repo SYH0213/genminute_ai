@@ -900,4 +900,203 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
+
+    // ======================================
+    // 마인드맵 모달 기능
+    // ======================================
+
+    const mindmapBtn = document.getElementById('mindmap-btn');
+    const mindmapModal = document.getElementById('mindmap-modal');
+    const closeMindmapModal = document.getElementById('close-mindmap-modal');
+    const mindmapContainer = document.getElementById('mindmap-container');
+
+    // 마인드맵 데이터 저장 변수
+    let mindmapData = null;
+    let markmapInstance = null;
+
+    // 마인드맵 버튼 클릭
+    if (mindmapBtn) {
+        mindmapBtn.addEventListener('click', async () => {
+            try {
+                // 이미 로드된 데이터가 있으면 바로 모달 표시
+                if (mindmapData) {
+                    mindmapModal.classList.add('active');
+                    renderMindmap(mindmapData);
+                    return;
+                }
+
+                // 로딩 메시지 표시
+                mindmapBtn.disabled = true;
+                mindmapBtn.style.opacity = '0.6';
+
+                // API로부터 마인드맵 데이터 가져오기
+                const response = await fetch(`/api/mindmap/${MEETING_ID}`);
+                const data = await response.json();
+
+                if (!response.ok || !data.success) {
+                    throw new Error(data.error || '마인드맵 데이터를 불러올 수 없습니다.');
+                }
+
+                // 마인드맵 데이터가 없는 경우
+                if (!data.mindmap_content) {
+                    alert('이 회의록에는 마인드맵 데이터가 없습니다.');
+                    return;
+                }
+
+                // 데이터 저장 및 모달 표시
+                mindmapData = data.mindmap_content;
+                mindmapModal.classList.add('active');
+                renderMindmap(mindmapData);
+
+            } catch (error) {
+                console.error('❌ 마인드맵 로드 실패:', error);
+                alert(`마인드맵을 불러오는 중 오류가 발생했습니다:\n${error.message}`);
+            } finally {
+                // 버튼 상태 복원
+                mindmapBtn.disabled = false;
+                mindmapBtn.style.opacity = '1';
+            }
+        });
+    }
+
+    // 모달 닫기 (X 버튼)
+    if (closeMindmapModal) {
+        closeMindmapModal.addEventListener('click', () => {
+            mindmapModal.classList.remove('active');
+        });
+    }
+
+    // 모달 닫기 (배경 클릭)
+    if (mindmapModal) {
+        mindmapModal.addEventListener('click', (e) => {
+            if (e.target === mindmapModal) {
+                mindmapModal.classList.remove('active');
+            }
+        });
+    }
+
+    // 마인드맵 렌더링 함수
+    async function renderMindmap(markdownContent) {
+        if (!mindmapContainer) return;
+
+        try {
+            // 컨테이너 초기화
+            mindmapContainer.innerHTML = '';
+
+            // SVG 엘리먼트 생성
+            const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            svg.setAttribute('width', '100%');
+            svg.setAttribute('height', '500px');
+            svg.style.border = '1px solid #e0e0e0';
+            svg.style.borderRadius = '8px';
+            mindmapContainer.appendChild(svg);
+
+            // Markmap autoloader가 로드될 때까지 대기
+            if (typeof window.markmap === 'undefined') {
+                console.log('⏳ Markmap 라이브러리 로딩 중...');
+
+                // autoloader 대기 (최대 3초)
+                let retries = 0;
+                while (typeof window.markmap === 'undefined' && retries < 30) {
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    retries++;
+                }
+
+                if (typeof window.markmap === 'undefined') {
+                    throw new Error('Markmap 라이브러리를 로드할 수 없습니다.');
+                }
+            }
+
+            // Markmap 렌더링
+            const { Markmap } = window.markmap;
+
+            // Transformer 사용 (markmap-lib 필요)
+            let root;
+            if (window.markmap.transform) {
+                const { transform } = window.markmap;
+                const transformer = transform(markdownContent);
+                root = transformer.root;
+            } else {
+                // 폴백: 간단한 파싱
+                console.warn('⚠️ Markmap transform을 사용할 수 없어 기본 모드로 렌더링합니다.');
+                // 마크다운을 간단히 파싱 (제한적)
+                root = parseMarkdownToTree(markdownContent);
+            }
+
+            // Markmap 인스턴스 생성 및 렌더링
+            if (markmapInstance) {
+                markmapInstance.destroy();
+            }
+            markmapInstance = Markmap.create(svg, {
+                color: (node) => {
+                    const colors = ['#4A90E2', '#50C878', '#F39C12', '#9B59B6', '#E74C3C', '#1ABC9C'];
+                    return colors[node.depth % colors.length];
+                }
+            }, root);
+
+            console.log('✅ 마인드맵 렌더링 완료');
+
+        } catch (error) {
+            console.error('❌ 마인드맵 렌더링 실패:', error);
+            mindmapContainer.innerHTML = `
+                <div style="padding: 2rem; text-align: center; color: #e74c3c;">
+                    <p>마인드맵을 표시할 수 없습니다.</p>
+                    <p style="font-size: 0.9rem; color: #999; margin-top: 0.5rem;">${error.message}</p>
+                </div>
+            `;
+        }
+    }
+
+    // 간단한 마크다운 파싱 함수 (폴백용)
+    function parseMarkdownToTree(markdown) {
+        const lines = markdown.split('\n').filter(line => line.trim());
+        const root = { type: 'heading', depth: 0, content: 'Mind Map', children: [] };
+        const stack = [root];
+
+        lines.forEach(line => {
+            const trimmed = line.trim();
+
+            // 제목 파싱 (# ## ### 등)
+            const headingMatch = trimmed.match(/^(#{1,6})\s+(.+)$/);
+            if (headingMatch) {
+                const level = headingMatch[1].length;
+                const content = headingMatch[2];
+
+                const node = {
+                    type: 'heading',
+                    depth: level,
+                    content: content,
+                    children: []
+                };
+
+                // 적절한 부모 찾기
+                while (stack.length > 0 && stack[stack.length - 1].depth >= level) {
+                    stack.pop();
+                }
+
+                if (stack.length > 0) {
+                    stack[stack.length - 1].children.push(node);
+                    stack.push(node);
+                }
+            }
+
+            // 리스트 아이템 파싱 (- 또는 *)
+            const listMatch = trimmed.match(/^[-*]\s+(.+)$/);
+            if (listMatch) {
+                const content = listMatch[1];
+                const node = {
+                    type: 'list_item',
+                    depth: stack[stack.length - 1].depth + 1,
+                    content: content,
+                    children: []
+                };
+
+                if (stack.length > 0) {
+                    stack[stack.length - 1].children.push(node);
+                }
+            }
+        });
+
+        return root;
+    }
 });

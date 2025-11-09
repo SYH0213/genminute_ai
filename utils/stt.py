@@ -429,6 +429,102 @@ class STTManager:
 
         return segments
 
+    def extract_mindmap_keywords(self, summary_content: str, title: str) -> str:
+        """
+        문단 요약에서 마인드맵용 키워드를 추출합니다.
+
+        Args:
+            summary_content (str): 문단 요약 전체 텍스트 (### 제목, * 항목 형식)
+            title (str): 회의 제목
+
+        Returns:
+            str: 마크다운 형식의 마인드맵 키워드 (Markmap 호환)
+                 실패 시 None 반환
+        """
+        prompt_text = f"""당신은 회의 요약을 마인드맵용 키워드로 변환하는 AI 어시스턴트입니다.
+
+**입력 데이터**:
+회의 제목: {title}
+
+문단 요약:
+{summary_content}
+
+**작업 요구사항**:
+
+1. **출력 형식**: 마크다운 계층 구조로 변환
+   - 1단계: # {title} (회의 제목을 중심 노드로)
+   - 2단계: ## [주제명] (### 제목들을 2단계 노드로)
+   - 3단계: - [키워드] (* 항목들을 간결한 키워드로)
+
+2. **키워드 추출 규칙**:
+   - 각 * 항목을 5-7단어 이내의 핵심 키워드로 축약
+   - [cite: N, M] 같은 인용 표시는 모두 제거
+   - 문장형 → 체언형/명사구로 변환 (예: "부서 간 소통 부족이 협업의 걸림돌" → "부서간 소통 부족")
+   - 중복되거나 유사한 내용은 하나로 통합
+   - 너무 긴 문장은 핵심만 추출
+
+3. **구조 유지**:
+   - ### 제목은 ## 제목으로 변환 (계층 구조 유지)
+   - 각 주제별로 3-5개의 키워드만 선별
+   - 주제 간 줄바꿈 2개로 구분
+
+4. **출력 예시**:
+```markdown
+# 팀회의
+
+## 사내 소통 문제점 진단
+- 부서간 소통 부족
+- 개발팀: 요구사항 공유 미흡
+- 마케팅팀: 반복 수정 작업 발생
+- 영업팀: 경직된 의사소통
+
+## 개선 방안 제안
+- 투명한 정기 공유 채널
+- 부서간 정기 워크숍
+- 익명 아이디어 게시판
+- 사내 뉴스레터 운영
+
+## 실행 계획
+- 초안 작성 및 공유
+- 분기별 워크숍 기획
+- 시범 운영 시작
+```
+
+**중요**:
+- 절대로 서론, 설명, 부연을 포함하지 마세요.
+- 응답은 반드시 '# {title}'로 시작해야 합니다.
+- 마크다운 형식만 출력하세요."""
+
+        print(f"🗺️ 마인드맵 키워드 추출 시작...")
+
+        api_key = os.environ.get("GOOGLE_API_KEY")
+        if not api_key:
+            raise ValueError("GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.")
+
+        client = genai.Client(api_key=api_key)
+        model = "gemini-2.5-flash"  # Flash 모델 사용 (빠르고 저렴)
+
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[
+                    types.Content(
+                        role="user",
+                        parts=[
+                            types.Part.from_text(text=prompt_text),
+                        ],
+                    ),
+                ],
+            )
+            mindmap_content = response.text.strip()
+            print("✅ 마인드맵 키워드 추출 완료.")
+            return mindmap_content
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"❌ 마인드맵 키워드 추출 중 오류 발생: {e}")
+            return None
+
 
 
 

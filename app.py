@@ -327,6 +327,33 @@ def upload_script():
                             summary_content=summary_content
                         )
                         print(f"✅ 문단 요약 생성 및 저장 완료 (meeting_id: {meeting_id})")
+
+                        # 5. 문단 요약 성공 후 마인드맵 키워드 자동 생성
+                        try:
+                            print(f"🗺️ 마인드맵 키워드 자동 생성 시작 (meeting_id: {meeting_id})")
+
+                            # 마인드맵 키워드 생성
+                            mindmap_content = stt_manager.extract_mindmap_keywords(
+                                summary_content,
+                                first_segment['title']
+                            )
+
+                            if mindmap_content:
+                                # SQLite DB에 저장
+                                db.save_mindmap(
+                                    meeting_id=meeting_id,
+                                    mindmap_content=mindmap_content
+                                )
+                                print(f"✅ 마인드맵 키워드 생성 및 저장 완료 (meeting_id: {meeting_id})")
+                            else:
+                                print(f"⚠️ 마인드맵 키워드 생성 실패 (meeting_id: {meeting_id})")
+
+                        except Exception as mindmap_error:
+                            print(f"⚠️ 마인드맵 키워드 자동 생성 중 오류 발생: {mindmap_error}")
+                            import traceback
+                            traceback.print_exc()
+                            # 마인드맵 생성 실패해도 업로드는 성공으로 처리
+
                     else:
                         print(f"⚠️ 문단 요약 생성 실패 (meeting_id: {meeting_id})")
 
@@ -496,6 +523,33 @@ def upload_and_process():
                             summary_content=summary_content
                         )
                         print(f"✅ 문단 요약 생성 및 저장 완료 (meeting_id: {meeting_id})")
+
+                        # 4. 문단 요약 성공 후 마인드맵 키워드 자동 생성
+                        try:
+                            print(f"🗺️ 마인드맵 키워드 자동 생성 시작 (meeting_id: {meeting_id})")
+
+                            # 마인드맵 키워드 생성
+                            mindmap_content = stt_manager.extract_mindmap_keywords(
+                                summary_content,
+                                first_segment['title']
+                            )
+
+                            if mindmap_content:
+                                # SQLite DB에 저장
+                                db.save_mindmap(
+                                    meeting_id=meeting_id,
+                                    mindmap_content=mindmap_content
+                                )
+                                print(f"✅ 마인드맵 키워드 생성 및 저장 완료 (meeting_id: {meeting_id})")
+                            else:
+                                print(f"⚠️ 마인드맵 키워드 생성 실패 (meeting_id: {meeting_id})")
+
+                        except Exception as mindmap_error:
+                            print(f"⚠️ 마인드맵 키워드 자동 생성 중 오류 발생: {mindmap_error}")
+                            import traceback
+                            traceback.print_exc()
+                            # 마인드맵 생성 실패해도 업로드는 성공으로 처리
+
                     else:
                         print(f"⚠️ 문단 요약 생성 실패 (meeting_id: {meeting_id})")
 
@@ -756,6 +810,37 @@ def check_summary(meeting_id):
         import traceback
         traceback.print_exc()
         return jsonify({"success": False, "error": f"요약 조회 중 오류 발생: {str(e)}"}), 500
+
+@app.route("/api/mindmap/<string:meeting_id>", methods=["GET"])
+@login_required
+def get_mindmap(meeting_id):
+    """마인드맵 키워드 조회 API"""
+    try:
+        # 권한 체크
+        user_id = session['user_id']
+        if not can_access_meeting(user_id, meeting_id):
+            return jsonify({"success": False, "error": "접근 권한이 없습니다."}), 403
+
+        # SQLite DB에서 마인드맵 조회
+        mindmap_content = db.get_mindmap_by_meeting_id(meeting_id)
+
+        if mindmap_content:
+            return jsonify({
+                "success": True,
+                "has_mindmap": True,
+                "mindmap_content": mindmap_content
+            })
+        else:
+            return jsonify({
+                "success": True,
+                "has_mindmap": False,
+                "message": "마인드맵이 아직 생성되지 않았습니다."
+            })
+
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return jsonify({"success": False, "error": f"마인드맵 조회 중 오류 발생: {str(e)}"}), 500
 
 @app.route("/api/get_minutes/<string:meeting_id>", methods=["GET"])
 @login_required

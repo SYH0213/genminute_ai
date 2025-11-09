@@ -245,6 +245,16 @@ class DatabaseManager:
         else:
             print(f"[삭제 전] meeting_shares: 테이블 없음")
 
+        # 4. meeting_mindmap 삭제 전 개수 확인
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
+        before_mindmap = 0
+        if cursor.fetchone():
+            cursor.execute("SELECT COUNT(*) as count FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+            before_mindmap = cursor.fetchone()['count']
+            print(f"[삭제 전] meeting_mindmap: {before_mindmap}개")
+        else:
+            print(f"[삭제 전] meeting_mindmap: 테이블 없음")
+
         print("-" * 70)
 
         # 4. meeting_dialogues에서 삭제 수행
@@ -265,11 +275,19 @@ class DatabaseManager:
             cursor.execute("DELETE FROM meeting_shares WHERE meeting_id = ?", (meeting_id,))
             deleted_shares = cursor.rowcount
 
+        # 7. meeting_mindmap에서 삭제 수행
+        deleted_mindmap = 0
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
+        if cursor.fetchone():
+            cursor.execute("DELETE FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+            deleted_mindmap = cursor.rowcount
+
         conn.commit()
 
         print(f"[삭제 수행] meeting_dialogues: {deleted_dialogues}개 삭제")
         print(f"[삭제 수행] meeting_minutes: {deleted_minutes}개 삭제")
         print(f"[삭제 수행] meeting_shares: {deleted_shares}개 삭제")
+        print(f"[삭제 수행] meeting_mindmap: {deleted_mindmap}개 삭제")
 
         print("-" * 70)
 
@@ -292,10 +310,17 @@ class DatabaseManager:
             after_shares = cursor.fetchone()['count']
             print(f"[삭제 후] meeting_shares: {after_shares}개 남음")
 
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
+        after_mindmap = 0
+        if cursor.fetchone():
+            cursor.execute("SELECT COUNT(*) as count FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+            after_mindmap = cursor.fetchone()['count']
+            print(f"[삭제 후] meeting_mindmap: {after_mindmap}개 남음")
+
         conn.close()
 
         # 검증 결과
-        if after_dialogues == 0 and after_minutes == 0 and after_shares == 0:
+        if after_dialogues == 0 and after_minutes == 0 and after_shares == 0 and after_mindmap == 0:
             print(f"✅ SQLite DB 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
         else:
             print(f"⚠️ SQLite DB 삭제 검증 실패: 일부 데이터가 남아있습니다!")
@@ -306,8 +331,9 @@ class DatabaseManager:
             "dialogues": deleted_dialogues,
             "minutes": deleted_minutes,
             "shares": deleted_shares,
-            "before": {"dialogues": before_dialogues, "minutes": before_minutes, "shares": before_shares},
-            "after": {"dialogues": after_dialogues, "minutes": after_minutes, "shares": after_shares}
+            "mindmap": deleted_mindmap,
+            "before": {"dialogues": before_dialogues, "minutes": before_minutes, "shares": before_shares, "mindmap": before_mindmap},
+            "after": {"dialogues": after_dialogues, "minutes": after_minutes, "shares": after_shares, "mindmap": after_mindmap}
         }
 
     def get_audio_file_by_meeting_id(self, meeting_id):
@@ -493,3 +519,105 @@ class DatabaseManager:
 
         finally:
             conn.close()
+
+    def save_mindmap(self, meeting_id, mindmap_content):
+        """
+        생성된 마인드맵 키워드를 데이터베이스에 저장합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+            mindmap_content (str): 마인드맵 마크다운 내용
+
+        Returns:
+            bool: 저장 성공 여부
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # meeting_mindmap 테이블이 없으면 생성
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS meeting_mindmap (
+                meeting_id TEXT PRIMARY KEY,
+                mindmap_content TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )
+        """)
+
+        created_at = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+        # 기존 마인드맵이 있는지 확인
+        cursor.execute("SELECT meeting_id FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+        existing = cursor.fetchone()
+
+        if existing:
+            # 기존 마인드맵 업데이트
+            cursor.execute("""
+                UPDATE meeting_mindmap
+                SET mindmap_content = ?, created_at = ?
+                WHERE meeting_id = ?
+            """, (mindmap_content, created_at, meeting_id))
+            print(f"✅ 마인드맵 업데이트 완료: meeting_id={meeting_id}")
+        else:
+            # 새 마인드맵 저장
+            cursor.execute("""
+                INSERT INTO meeting_mindmap (meeting_id, mindmap_content, created_at)
+                VALUES (?, ?, ?)
+            """, (meeting_id, mindmap_content, created_at))
+            print(f"✅ 마인드맵 저장 완료: meeting_id={meeting_id}")
+
+        conn.commit()
+        conn.close()
+        return True
+
+    def get_mindmap_by_meeting_id(self, meeting_id):
+        """
+        meeting_id로 저장된 마인드맵을 조회합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+
+        Returns:
+            str: 마인드맵 마크다운 내용, 없으면 None
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 테이블 존재 여부 확인
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
+        if not cursor.fetchone():
+            conn.close()
+            return None
+
+        cursor.execute("SELECT mindmap_content FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+        row = cursor.fetchone()
+        conn.close()
+
+        if row:
+            return row['mindmap_content']
+        return None
+
+    def delete_mindmap_by_meeting_id(self, meeting_id):
+        """
+        meeting_id로 마인드맵 데이터를 삭제합니다.
+
+        Args:
+            meeting_id (str): 회의 ID
+
+        Returns:
+            int: 삭제된 행 수
+        """
+        conn = self._get_connection()
+        cursor = conn.cursor()
+
+        # 테이블 존재 여부 확인
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
+        if not cursor.fetchone():
+            conn.close()
+            return 0
+
+        cursor.execute("DELETE FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
+        deleted_count = cursor.rowcount
+        conn.commit()
+        conn.close()
+
+        return deleted_count
