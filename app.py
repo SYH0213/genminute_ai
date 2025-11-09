@@ -108,7 +108,7 @@ def convert_video_to_audio(video_path, audio_path):
             text=True,
             encoding='utf-8',
             errors='ignore',
-            timeout=300
+            timeout=1200
         )
 
         if result.returncode == 0:
@@ -119,7 +119,7 @@ def convert_video_to_audio(video_path, audio_path):
             return False
 
     except subprocess.TimeoutExpired:
-        print(f"❌ 비디오 변환 타임아웃 (5분 초과)")
+        print(f"❌ 비디오 변환 타임아웃 (20분 초과)")
         return False
     except Exception as e:
         print(f"❌ 비디오 변환 중 오류 발생: {e}")

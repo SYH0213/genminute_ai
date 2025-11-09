@@ -251,6 +251,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 timestamp: new Date().toISOString()
             });
 
+            // 최근 50개 메시지만 유지 (용량 절약)
+            if (history.messages.length > 50) {
+                history.messages = history.messages.slice(-50);
+            }
+
             // 저장
             sessionStorage.setItem(CHAT_HISTORY_KEY, JSON.stringify(history));
         } catch (error) {
