@@ -13,7 +13,9 @@
       "Bash(do python3 -m py_compile:*)",
       "Bash(echo:*)",
       "Bash(done)",
-      "WebSearch"
+      "WebSearch",
+      "Bash(mkdir:*)",
+      "Bash(pandoc:*)"
     ],
     "deny": [],
     "ask": []

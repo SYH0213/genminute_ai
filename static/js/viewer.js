@@ -1072,8 +1072,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // 간단한 마크다운 파싱 함수 (폴백용)
     function parseMarkdownToTree(markdown) {
         const lines = markdown.split('\n').filter(line => line.trim());
-        const root = { type: 'heading', depth: 0, content: 'Mind Map', children: [] };
-        const stack = [root];
+        let root = null;
+        let stack = [];
 
         lines.forEach(line => {
             const trimmed = line.trim();
@@ -1090,6 +1090,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     content: content,
                     children: []
                 };
+
+                // 첫 번째 # (depth=1) 노드를 root로 설정
+                if (level === 1 && root === null) {
+                    root = node;
+                    stack = [root];
+                    return;
+                }
 
                 // 적절한 부모 찾기
                 while (stack.length > 0 && stack[stack.length - 1].depth >= level) {
@@ -1108,7 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const content = listMatch[1];
                 const node = {
                     type: 'list_item',
-                    depth: stack[stack.length - 1].depth + 1,
+                    depth: stack.length > 0 ? stack[stack.length - 1].depth + 1 : 1,
                     content: content,
                     children: []
                 };
