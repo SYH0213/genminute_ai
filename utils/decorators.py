@@ -28,7 +28,7 @@ def login_required(f):
                 return jsonify({'error': '로그인이 필요합니다.', 'redirect': '/login'}), 401
 
             # HTML 페이지 요청인 경우 로그인 페이지로 리다이렉트
-            return redirect(url_for('login_page'))
+            return redirect(url_for('auth.login_page'))
 
         return f(*args, **kwargs)
 
@@ -54,7 +54,7 @@ def admin_required(f):
                 return jsonify({'error': '로그인이 필요합니다.', 'redirect': '/login'}), 401
 
             # HTML 페이지 요청인 경우 로그인 페이지로 리다이렉트
-            return redirect(url_for('login_page'))
+            return redirect(url_for('auth.login_page'))
 
         # Admin 권한 체크
         user_id = session['user_id']
