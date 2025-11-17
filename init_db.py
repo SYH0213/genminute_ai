@@ -57,8 +57,11 @@ def init_database():
         CREATE TABLE IF NOT EXISTS meeting_minutes (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             meeting_id TEXT UNIQUE NOT NULL,
+            title TEXT,
+            meeting_date TEXT,
             minutes_content TEXT NOT NULL,
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+            updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
             owner_id INTEGER
         )
     """)

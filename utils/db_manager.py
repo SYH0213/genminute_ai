@@ -121,12 +121,13 @@ class DatabaseManager:
         # meeting_minutes 테이블이 없으면 생성
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS meeting_minutes (
-                meeting_id TEXT PRIMARY KEY,
-                title TEXT NOT NULL,
-                meeting_date TEXT NOT NULL,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meeting_id TEXT UNIQUE NOT NULL,
+                title TEXT,
+                meeting_date TEXT,
                 minutes_content TEXT NOT NULL,
-                created_at TEXT NOT NULL,
-                updated_at TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
                 owner_id INTEGER
             )
         """)
@@ -559,9 +560,10 @@ class DatabaseManager:
         # meeting_mindmap 테이블이 없으면 생성
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS meeting_mindmap (
-                meeting_id TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                meeting_id TEXT UNIQUE NOT NULL,
                 mindmap_content TEXT NOT NULL,
-                created_at TEXT NOT NULL
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
         """)
 
