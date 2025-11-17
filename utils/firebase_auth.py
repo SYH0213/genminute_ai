@@ -5,9 +5,12 @@ Firebase Authentication 모듈
 """
 
 import os
+import logging
 import firebase_admin
 from firebase_admin import credentials, auth
 from typing import Optional, Dict
+
+logger = logging.getLogger(__name__)
 
 # Firebase Admin SDK 초기화 (한 번만 실행)
 _firebase_initialized = False
@@ -33,10 +36,10 @@ def initialize_firebase():
         cred = credentials.Certificate(cred_path)
         firebase_admin.initialize_app(cred)
         _firebase_initialized = True
-        print("✅ Firebase Admin SDK 초기화 완료")
+        logger.info("✅ Firebase Admin SDK 초기화 완료")
 
     except Exception as e:
-        print(f"❌ Firebase 초기화 실패: {e}")
+        logger.error(f"❌ Firebase 초기화 실패: {e}")
         raise
 
 
@@ -71,13 +74,13 @@ def verify_id_token(id_token: str) -> Optional[Dict[str, str]]:
         return user_info
 
     except auth.InvalidIdTokenError:
-        print("❌ 유효하지 않은 ID 토큰")
+        logger.error("❌ 유효하지 않은 ID 토큰")
         return None
     except auth.ExpiredIdTokenError:
-        print("❌ 만료된 ID 토큰")
+        logger.error("❌ 만료된 ID 토큰")
         return None
     except Exception as e:
-        print(f"❌ 토큰 검증 실패: {e}")
+        logger.error(f"❌ 토큰 검증 실패: {e}")
         return None
 
 
@@ -103,5 +106,5 @@ def get_user_by_uid(uid: str) -> Optional[Dict]:
     except auth.UserNotFoundError:
         return None
     except Exception as e:
-        print(f"❌ 사용자 조회 실패: {e}")
+        logger.error(f"❌ 사용자 조회 실패: {e}")
         return None

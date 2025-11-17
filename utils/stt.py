@@ -1,11 +1,28 @@
 import os
 import json
+import logging
 from google import genai
 from google.genai import types
-from dotenv import load_dotenv
+
+from config import config
+
+logger = logging.getLogger(__name__)
+
+
 class STTManager:
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self):
-        load_dotenv() # 환경 변수 로드
+        if self._initialized:
+            return
+
+        self._initialized = True
 
     @staticmethod
     def _parse_mmss_to_seconds(time_str):
@@ -32,8 +49,8 @@ class STTManager:
             import datetime
             thread_id = threading.current_thread().name
             timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-            print(f"[{timestamp}][{thread_id}] 🎧 Gemini STT API로 음성 인식 중: {audio_path}")
-            api_key = os.environ.get("GOOGLE_API_KEY")
+            logger.info(f"[{timestamp}][{thread_id}] 🎧 Gemini STT API로 음성 인식 중: {audio_path}")
+            api_key = config.GOOGLE_API_KEY
             if api_key:
                 client = genai.Client(api_key=api_key)
             else:
@@ -89,7 +106,7 @@ class STTManager:
             JSON 배열만 출력하고, 추가 설명이나 마크다운 코드 블록은 포함하지 마세요.
             """
 
-            print("🤖 Gemini 2.5 Pro로 음성 인식 중...")
+            logger.info("🤖 Gemini 2.5 Pro로 음성 인식 중...")
             response = client.models.generate_content(
                 model="gemini-2.5-pro",
                 contents=[prompt, types.Part.from_bytes(data=file_bytes, mime_type=mime_type)],
@@ -97,13 +114,13 @@ class STTManager:
 
             # response.text가 None인지 체크
             if response.text is None:
-                print("⚠️ Gemini 응답이 비어있습니다. 응답 상태 확인:")
-                print(f"   - candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
-                print(f"   - prompt_feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'N/A'}")
+                logger.warning("⚠️ Gemini 응답이 비어있습니다. 응답 상태 확인:")
+                logger.warning(f"   -candidates: {response.candidates if hasattr(response, 'candidates') else 'N/A'}")
+                logger.warning(f"   -prompt_feedback: {response.prompt_feedback if hasattr(response, 'prompt_feedback') else 'N/A'}")
 
                 # 안전 필터링 체크
                 if hasattr(response, 'prompt_feedback') and response.prompt_feedback:
-                    print(f"⚠️ 프롬프트가 차단되었을 수 있습니다: {response.prompt_feedback}")
+                    logger.warning(f"⚠️ 프롬프트가 차단되었을 수 있습니다: {response.prompt_feedback}")
 
                 raise ValueError("Gemini API가 빈 응답을 반환했습니다. 안전 필터링 또는 API 오류일 수 있습니다.")
 
@@ -113,22 +130,22 @@ class STTManager:
             try:
                 result_list = json.loads(cleaned_response)
             except json.JSONDecodeError as e:
-                print(f"❌ JSON 파싱 실패: {e}")
-                print(f"📝 오류 위치: line {e.lineno}, column {e.colno}")
+                logger.error(f"❌ JSON 파싱 실패: {e}")
+                logger.info(f"📝 오류 위치: line {e.lineno}, column {e.colno}")
 
                 # 응답 일부 출력 (디버깅용)
                 lines = cleaned_response.split('\n')
                 if e.lineno <= len(lines):
                     error_line = lines[e.lineno - 1]
-                    print(f"📄 오류 발생 줄: {error_line}")
+                    logger.info(f"📄 오류 발생 줄: {error_line}")
                     if e.colno > 0:
-                        print(f"    {' ' * (e.colno - 1)}^ 여기")
+                        logger.info(f"    {' ' * (e.colno - 1)}^ 여기")
 
                 # 전체 응답 저장 (디버깅용)
                 error_log_path = os.path.join(os.path.dirname(__file__), '..', 'gemini_error_response.txt')
                 with open(error_log_path, 'w', encoding='utf-8') as f:
                     f.write(cleaned_response)
-                print(f"📁 전체 응답이 저장되었습니다: {error_log_path}")
+                logger.info(f"📁 전체 응답이 저장되었습니다: {error_log_path}")
 
                 raise ValueError(f"Gemini 응답이 올바른 JSON 형식이 아닙니다: {e}")
 
@@ -141,14 +158,14 @@ class STTManager:
                     "confidence": segment.get("confidence", 0.0),
                     "text": segment.get("text", ""),
                 })
-            print("✅ Gemini 음성 인식 완료")
+            logger.info("✅ Gemini 음성 인식 완료")
             
             return normalized_segments
 
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"❌ Gemini 오류 발생: {e}")
+            logger.error(f"❌ Gemini 오류 발생: {e}")
             return None
 
     def subtopic_generate(self, title: str, transcript_text: str):
@@ -185,10 +202,10 @@ class STTManager:
             이제 다음 [스크립트 내용]을 분석하여 위의 요구사항을 모두 준수하는 주제별 요약본을 생성해 주십시오.
             {transcript_text}"""
 
-        print(f"======prompt_text========")
-        print(prompt_text)
+        logger.debug(f"======prompt_text========")
+        logger.debug(prompt_text)
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = config.GOOGLE_API_KEY
         if not api_key:
             raise ValueError("GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
@@ -199,7 +216,7 @@ class STTManager:
         import datetime
         thread_id = threading.current_thread().name
         timestamp = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
-        print(f"[{timestamp}][{thread_id}] 🤖 Gemini를 통해 요약 생성 중...")
+        logger.info(f"[{timestamp}][{thread_id}] 🤖 Gemini를 통해 요약 생성 중...")
         try:
             response = client.models.generate_content(
                 model=model,
@@ -213,12 +230,12 @@ class STTManager:
                 ],
             )
             summary_content = response.text.strip()
-            print("✅ Gemini 요약 생성 완료.")
+            logger.info("✅ Gemini 요약 생성 완료.")
             return summary_content
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"❌ Gemini 요약 생성 중 오류 발생: {e}")
+            logger.error(f"❌ Gemini 요약 생성 중 오류 발생: {e}")
             return None
 
     def generate_minutes(self, title: str, transcript_text: str, summary_content: str, meeting_date: str):
@@ -311,17 +328,17 @@ class STTManager:
 ##############################
 """
 
-        print(f"======회의록 생성 prompt========")
-        print(prompt_text[:500] + "...")
+        logger.debug(f"======회의록 생성 prompt========")
+        logger.debug(prompt_text[:500] + "...")
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = config.GOOGLE_API_KEY
         if not api_key:
             raise ValueError("GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
         client = genai.Client(api_key=api_key)
         model = "gemini-2.5-pro"
 
-        print("🤖 Gemini를 통해 회의록 생성 중...")
+        logger.info("🤖 Gemini를 통해 회의록 생성 중...")
         try:
             response = client.models.generate_content(
                 model=model,
@@ -335,12 +352,12 @@ class STTManager:
                 ],
             )
             minutes_content = response.text.strip()
-            print("✅ Gemini 회의록 생성 완료.")
+            logger.info("✅ Gemini 회의록 생성 완료.")
             return minutes_content
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"❌ Gemini 회의록 생성 중 오류 발생: {e}")
+            logger.error(f"❌ Gemini 회의록 생성 중 오류 발생: {e}")
             return None
 
     @staticmethod
@@ -409,7 +426,7 @@ class STTManager:
                             speaker_num = speaker_map[speaker_label]
                         else:
                             # 화자 표시 없이 텍스트만 있는 경우 (이전 화자 계속)
-                            print(f"⚠️ 화자를 찾을 수 없는 줄 (건너뜀): {line}")
+                            logger.warning(f"⚠️ 화자를 찾을 수 없는 줄 (건너뜀): {line}")
                             continue
 
             # segments에 추가
@@ -423,9 +440,9 @@ class STTManager:
 
             current_time += time_increment
 
-        print(f"✅ 스크립트 파싱 완료: {len(segments)}개 세그먼트 생성")
+        logger.info(f"✅ 스크립트 파싱 완료: {len(segments)}개 세그먼트 생성")
         if speaker_map:
-            print(f"   화자 매핑: {speaker_map}")
+            logger.info(f"   화자 매핑: {speaker_map}")
 
         return segments
 
@@ -495,9 +512,9 @@ class STTManager:
 - 응답은 반드시 '# {title}'로 시작해야 합니다.
 - 마크다운 형식만 출력하세요."""
 
-        print(f"🗺️ 마인드맵 키워드 추출 시작...")
+        logger.info(f"🗺️ 마인드맵 키워드 추출 시작...")
 
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = config.GOOGLE_API_KEY
         if not api_key:
             raise ValueError("GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
@@ -517,12 +534,12 @@ class STTManager:
                 ],
             )
             mindmap_content = response.text.strip()
-            print("✅ 마인드맵 키워드 추출 완료.")
+            logger.info("✅ 마인드맵 키워드 추출 완료.")
             return mindmap_content
         except Exception as e:
             import traceback
             traceback.print_exc()
-            print(f"❌ 마인드맵 키워드 추출 중 오류 발생: {e}")
+            logger.error(f"❌ 마인드맵 키워드 추출 중 오류 발생: {e}")
             return None
 
 

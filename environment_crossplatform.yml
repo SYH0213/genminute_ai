@@ -1,4 +1,4 @@
-name: genminute_test
+name: genminute
 channels:
   - conda-forge
   - defaults

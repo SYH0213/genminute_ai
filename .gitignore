@@ -6,6 +6,8 @@ vector_db/
 **.db
 ngrok.exe
 
+old/
+
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

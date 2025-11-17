@@ -11,7 +11,7 @@
     {% if error %}
         <div class="flash-error">{{ error }}</div>
     {% endif %}
-    <form class="meeting-form" id="upload-form" method="POST" action="{{ url_for('upload_and_process') }}" enctype="multipart/form-data" novalidate>
+    <form class="meeting-form" id="upload-form" method="POST" action="{{ url_for('meetings.upload_and_process') }}" enctype="multipart/form-data" novalidate>
         <div class="form-group">
             <div class="drop-zone" id="drop-zone">
                 <input type="file" id="audio-file-input" name="audio_file" accept=".wav,.mp3,.m4a,.flac,.mp4" style="display: none;" required>

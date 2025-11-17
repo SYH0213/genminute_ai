@@ -1,11 +1,11 @@
 import os
 import re
+import logging
 from google import genai
-from dotenv import load_dotenv
 
-# .env 파일 로드
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+from config import config
+
+logger = logging.getLogger(__name__)
 
 
 class ChatManager:
@@ -14,27 +14,44 @@ class ChatManager:
     SelfQueryRetriever를 사용하여 관련 문서를 검색하고,
     Gemini 2.5 Flash로 답변을 생성합니다.
     """
+    _instance = None
+    _initialized = False
 
-    def __init__(self, vector_db_manager, retriever_type="similarity"):
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, vector_db_manager=None, retriever_type="similarity"):
+        if self._initialized:
+            return
         """
         Args:
-            vector_db_manager (VectorDBManager): 벡터 DB 매니저 인스턴스
+            vector_db_manager (VectorDBManager, optional): 벡터 DB 매니저 인스턴스.
+                                                          None이면 자동으로 VectorDBManager() 생성.
             retriever_type (str, optional): 검색 리트리버 타입.
                                             "similarity", "mmr", "self_query", "similarity_score_threshold" 중 선택.
                                             Defaults to "similarity".
         """
+        # vector_db_manager가 None이면 자동 생성 (Singleton이므로 항상 같은 인스턴스)
+        if vector_db_manager is None:
+            from utils.vector_db_manager import VectorDBManager
+            vector_db_manager = VectorDBManager()
+
         self.vdb_manager = vector_db_manager
         self.retriever_type = retriever_type
 
         # Gemini API 클라이언트 초기화
-        api_key = os.environ.get("GOOGLE_API_KEY")
+        api_key = config.GOOGLE_API_KEY
         if not api_key:
             raise ValueError("GOOGLE_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
         self.gemini_client = genai.Client(api_key=api_key)
         self.model_name = "gemini-2.5-flash"
 
-        print(f"✅ ChatManager 초기화 완료: retriever_type='{self.retriever_type}'")
+        logger.info(f"✅ ChatManager 초기화 완료: retriever_type='{self.retriever_type}'")
+
+        self._initialized = True
 
     def search_documents(self, query: str, meeting_id: str = None, accessible_meeting_ids: list = None) -> dict:
         """
@@ -68,7 +85,7 @@ class ChatManager:
         elif accessible_meeting_ids:
             # 접근 가능한 노트들로 제한 (여러 노트에서 검색)
             # Vector DB가 $in 연산자를 지원하지 않을 수 있으므로, 각 노트별로 검색 후 결합
-            print(f"🔍 {len(accessible_meeting_ids)}개 노트에서 검색 중...")
+            logger.info(f"🔍 {len(accessible_meeting_ids)}개 노트에서 검색 중...")
             all_chunks = []
             all_subtopics = []
 
@@ -98,7 +115,7 @@ class ChatManager:
 
                 # title 키워드로 부분 일치 필터링
                 if title_keywords:
-                    print(f"📌 title 필터링 적용: {title_keywords}")
+                    logger.info(f"📌 title 필터링 적용: {title_keywords}")
                     filtered_chunks = []
                     for doc in all_chunks:
                         doc_title = doc.metadata.get('title', '').lower()
@@ -111,15 +128,15 @@ class ChatManager:
                         if any(keyword.lower() in doc_title for keyword in title_keywords):
                             filtered_subtopics.append(doc)
 
-                    print(f"   필터링 전: chunks={len(all_chunks)}, subtopic={len(all_subtopics)}")
-                    print(f"   필터링 후: chunks={len(filtered_chunks)}, subtopic={len(filtered_subtopics)}")
+                    logger.debug(f"   필터링 전: chunks={len(all_chunks)}, subtopic={len(all_subtopics)}")
+                    logger.debug(f"   필터링 후: chunks={len(filtered_chunks)}, subtopic={len(filtered_subtopics)}")
 
                     all_chunks = filtered_chunks
                     all_subtopics = filtered_subtopics
 
             except Exception as e:
                 # 검색 실패 시 빈 결과 반환
-                print(f"⚠️ 검색 실패: {e}")
+                logger.warning(f"⚠️ 검색 실패: {e}")
                 all_chunks = []
                 all_subtopics = []
 
@@ -127,7 +144,7 @@ class ChatManager:
             chunks_results = all_chunks[:3]
             subtopic_results = all_subtopics[:3]
 
-            print(f"✅ 검색 완료: chunks={len(chunks_results)}개, subtopic={len(subtopic_results)}개")
+            logger.info(f"✅ 검색 완료: chunks={len(chunks_results)}개, subtopic={len(subtopic_results)}개")
 
             return {
                 "chunks": chunks_results,
@@ -163,7 +180,7 @@ class ChatManager:
 
             # title 키워드로 부분 일치 필터링
             if title_keywords:
-                print(f"📌 title 필터링 적용: {title_keywords}")
+                logger.info(f"📌 title 필터링 적용: {title_keywords}")
                 filtered_chunks = []
                 for doc in chunks_results:
                     doc_title = doc.metadata.get('title', '').lower()
@@ -177,8 +194,8 @@ class ChatManager:
                     if any(keyword.lower() in doc_title for keyword in title_keywords):
                         filtered_subtopics.append(doc)
 
-                print(f"   필터링 전: chunks={len(chunks_results)}, subtopic={len(subtopic_results)}")
-                print(f"   필터링 후: chunks={len(filtered_chunks)}, subtopic={len(filtered_subtopics)}")
+                logger.debug(f"   필터링 전: chunks={len(chunks_results)}, subtopic={len(subtopic_results)}")
+                logger.debug(f"   필터링 후: chunks={len(filtered_chunks)}, subtopic={len(filtered_subtopics)}")
 
                 chunks_results = filtered_chunks
                 subtopic_results = filtered_subtopics
@@ -187,7 +204,7 @@ class ChatManager:
             chunks_results = chunks_results[:3]
             subtopic_results = subtopic_results[:3]
 
-            print(f"✅ 검색 완료: chunks={len(chunks_results)}개, subtopic={len(subtopic_results)}개")
+            logger.info(f"✅ 검색 완료: chunks={len(chunks_results)}개, subtopic={len(subtopic_results)}개")
 
             return {
                 "chunks": chunks_results,
@@ -196,7 +213,7 @@ class ChatManager:
             }
 
         except Exception as e:
-            print(f"❌ 문서 검색 중 오류: {e}")
+            logger.error(f"❌ 문서 검색 중 오류: {e}")
             return {
                 "chunks": [],
                 "subtopics": [],
@@ -301,7 +318,7 @@ class ChatManager:
 
             answer = response.text.strip()
 
-            print(f"✅ 답변 생성 완료 (길이: {len(answer)}자)")
+            logger.info(f"✅ 답변 생성 완료 (길이: {len(answer)}자)")
 
             return {
                 "success": True,
@@ -309,7 +326,7 @@ class ChatManager:
             }
 
         except Exception as e:
-            print(f"❌ 답변 생성 중 오류: {e}")
+            logger.error(f"❌ 답변 생성 중 오류: {e}")
             return {
                 "success": False,
                 "answer": "죄송합니다. 답변 생성 중 오류가 발생했습니다.",
@@ -333,7 +350,7 @@ class ChatManager:
                 "error": str (optional)
             }
         """
-        print(f"🤖 챗봇 질의 처리 시작: '{query}'")
+        logger.info(f"🤖 챗봇 질의 처리 시작: '{query}'")
 
         # 1. 관련 문서 검색
         search_results = self.search_documents(query, meeting_id, accessible_meeting_ids)

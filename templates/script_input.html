@@ -12,7 +12,7 @@
     {% if error %}
         <div class="flash-error">{{ error }}</div>
     {% endif %}
-    <form class="meeting-form" id="script-form" method="POST" action="{{ url_for('upload_script') }}" novalidate>
+    <form class="meeting-form" id="script-form" method="POST" action="{{ url_for('admin.upload_script') }}" novalidate>
         <div class="form-group">
             <label>참여자</label>
             <div class="participants">

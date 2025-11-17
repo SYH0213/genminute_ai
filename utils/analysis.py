@@ -1,6 +1,9 @@
 import sqlite3
 from collections import defaultdict
 import os
+import logging
+
+logger = logging.getLogger(__name__)
 
 basedir = os.path.abspath(os.path.dirname(__file__))
 DB_PATH = os.path.join(basedir, "..", "database", "minute_ai.db")
@@ -41,5 +44,5 @@ def calculate_speaker_share(meeting_id):
         return chart_data
 
     except Exception as e:
-        print(f"Error in calculate_speaker_share: {e}")
+        logger.error(f"Error in calculate_speaker_share: {e}")
         return None

@@ -6,11 +6,13 @@
 """
 
 import os
+import logging
 import sqlite3
 from typing import Optional, Dict, List
-from dotenv import load_dotenv
 
-load_dotenv()
+from config import config
+
+logger = logging.getLogger(__name__)
 
 DB_PATH = "database/minute_ai.db"
 
@@ -67,7 +69,7 @@ def get_or_create_user(google_id: str, email: str, name: str = None, profile_pic
             """, (google_id, name, profile_picture, email))
             conn.commit()
 
-            print(f"✅ 기존 사용자 업데이트: {email} (google_id 갱신)")
+            logger.info(f"✅ 기존 사용자 업데이트: {email} (google_id 갱신)")
 
             # 업데이트된 사용자 정보 반환
             cursor.execute("SELECT * FROM users WHERE email = ?", (email,))
@@ -75,9 +77,8 @@ def get_or_create_user(google_id: str, email: str, name: str = None, profile_pic
             return dict(updated_user)
 
         # 3. 신규 사용자 생성
-        # 환경변수에서 admin 이메일 목록 확인
-        admin_emails = os.getenv('ADMIN_EMAILS', '').split(',')
-        admin_emails = [e.strip() for e in admin_emails if e.strip()]
+        # config에서 admin 이메일 목록 확인
+        admin_emails = [e.strip() for e in config.ADMIN_EMAILS if e.strip()]
         role = 'admin' if email in admin_emails else 'user'
 
         cursor.execute("""
@@ -88,7 +89,7 @@ def get_or_create_user(google_id: str, email: str, name: str = None, profile_pic
 
         user_id = cursor.lastrowid
 
-        print(f"✅ 신규 사용자 생성: {email} (role: {role})")
+        logger.info(f"✅ 신규 사용자 생성: {email} (role: {role})")
 
         return {
             'id': user_id,
@@ -328,12 +329,12 @@ def share_meeting(meeting_id: str, owner_id: int, shared_with_email: str) -> Dic
         """, (meeting_id, owner_id, shared_user['id']))
         conn.commit()
 
-        print(f"✅ 회의 공유 완료: {meeting_id} → {shared_with_email}")
+        logger.info(f"✅ 회의 공유 완료: {meeting_id} → {shared_with_email}")
 
         return {'success': True, 'message': f'{shared_with_email}에게 공유되었습니다.'}
 
     except Exception as e:
-        print(f"❌ 회의 공유 실패: {e}")
+        logger.error(f"❌ 회의 공유 실패: {e}")
         return {'success': False, 'message': f'공유 실패: {str(e)}'}
 
     finally:
@@ -434,7 +435,7 @@ def get_user_accessible_meeting_ids(user_id: int) -> List[str]:
         results = cursor.fetchall()
         meeting_ids = [row['meeting_id'] for row in results]
 
-        print(f"✅ 사용자 {user_id} 접근 가능한 노트: {len(meeting_ids)}개")
+        logger.info(f"✅ 사용자 {user_id} 접근 가능한 노트: {len(meeting_ids)}개")
         return meeting_ids
 
     finally:

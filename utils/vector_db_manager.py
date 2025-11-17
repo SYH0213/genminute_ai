@@ -2,9 +2,9 @@
 import chromadb
 import os
 import re
+import logging
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain_chroma import Chroma
-from dotenv import load_dotenv
 
 from langchain_classic.retrievers.self_query.base import SelfQueryRetriever
 from langchain_classic.chains.query_constructor.base import AttributeInfo
@@ -13,19 +13,28 @@ from langchain_classic.chains.query_constructor.base import AttributeInfo
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 import numpy as np
 
+from config import config
 
-# 이 파일의 상위 디렉토리에 있는 .env 파일을 찾아 로드
-dotenv_path = os.path.join(os.path.dirname(__file__), '..', '.env')
-load_dotenv(dotenv_path=dotenv_path)
+logger = logging.getLogger(__name__)
 
 class VectorDBManager:
+    _instance = None
+    _initialized = False
+
     COLLECTION_NAMES = {
         'chunks': 'meeting_chunks',
         'subtopic': 'meeting_subtopic',
     }
 
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
     def __init__(self, persist_directory="./database/vector_db", upload_folder="./uploads", db_manager=None):
-        if not os.getenv("OPENAI_API_KEY"):
+        if self._initialized:
+            return
+        if not config.OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY가 .env 파일에 설정되지 않았습니다.")
 
         self.client = chromadb.PersistentClient(path=persist_directory)
@@ -36,7 +45,7 @@ class VectorDBManager:
         self.db_manager = db_manager
 
         # Initialize LLM for SelfQueryRetriever
-        self.llm = ChatOpenAI(api_key=os.getenv("OPENAI_API_KEY"), temperature=0)
+        self.llm = ChatOpenAI(api_key=config.OPENAI_API_KEY, temperature=0)
 
         self.vectorstores = {
             key: Chroma(
@@ -90,7 +99,9 @@ class VectorDBManager:
             "subtopic": "회의록의 요약된 하위 주제",
         }
 
-        print(f"✅ VectorDBManager for collections {list(self.COLLECTION_NAMES.values())} initialized.")
+        logger.info(f"✅ VectorDBManager for collections {list(self.COLLECTION_NAMES.values())} initialized.")
+
+        self._initialized = True
 
     def _clean_text(self, formatted_text: str) -> str:
         """
@@ -132,10 +143,10 @@ class VectorDBManager:
             # 1. 스마트 청킹: 화자 변경과 시간 간격을 고려
             chunks = self._create_smart_chunks(segments, max_chunk_size=1000, time_gap_threshold=60)
 
-            print(f"📦 스마트 청킹으로 {len(chunks)}개의 청크 생성 완료")
+            logger.info(f"📦 스마트 청킹으로 {len(chunks)}개의 청크 생성 완료")
 
             # 2. 정규표현식으로 각 청크의 텍스트 정제 (speaker와 시간 정보 제거)
-            print(f"🔧 정규표현식으로 텍스트 정제 중...")
+            logger.info(f"🔧 정규표현식으로 텍스트 정제 중...")
             for chunk in chunks:
                 chunk['text'] = self._clean_text(chunk['text'])
 
@@ -168,11 +179,11 @@ class VectorDBManager:
                 ids=chunk_ids
             )
 
-            print(f"✅ {len(chunks)}개의 스마트 청크를 meeting_chunks DB에 저장 완료 (meeting_id: {meeting_id})")
+            logger.info(f"✅ {len(chunks)}개의 스마트 청크를 meeting_chunks DB에 저장 완료 (meeting_id: {meeting_id})")
 
         except Exception as e:
-            print(f"⚠️ 스마트 청킹 중 오류 발생: {e}")
-            print(f"📝 대신 기본 청킹 방식을 사용합니다.")
+            logger.warning(f"⚠️ 스마트 청킹 중 오류 발생: {e}")
+            logger.info(f"📝 대신 기본 청킹 방식을 사용합니다.")
 
             # 에러 발생 시 폴백: RecursiveCharacterTextSplitter 사용
             formatted_segments = []
@@ -198,7 +209,7 @@ class VectorDBManager:
             split_chunks = text_splitter.split_text(full_text)
 
             # 정규표현식으로 텍스트 정제
-            print(f"🔧 정규표현식으로 폴백 텍스트 정제 중...")
+            logger.info(f"🔧 정규표현식으로 폴백 텍스트 정제 중...")
             cleaned_chunks = [self._clean_text(chunk) for chunk in split_chunks]
 
             chunk_texts = []
@@ -225,7 +236,7 @@ class VectorDBManager:
                 ids=chunk_ids
             )
 
-            print(f"✅ {len(split_chunks)}개의 청크를 meeting_chunks DB에 저장 완료 (폴백 모드)")
+            logger.info(f"✅ {len(split_chunks)}개의 청크를 meeting_chunks DB에 저장 완료 (폴백 모드)")
 
     def _create_smart_chunks(self, segments, max_chunk_size=1000, time_gap_threshold=60):
         """
@@ -323,8 +334,8 @@ class VectorDBManager:
         #      if summary_chunks[0].count('\n') > 0:
         #          summary_chunks[0] = '### ' + summary_chunks[0]
 
-        print("===============summary_chunks=================")
-        print(summary_chunks)
+        logger.info("===============summary_chunks=================")
+        logger.info(summary_chunks)
         
         # 2. 각 요약 chunk를 Summary_Analysis_DB에 저장
         subtopic_vdb = self.vectorstores['subtopic']
@@ -356,10 +367,10 @@ class VectorDBManager:
 
         if chunk_texts:
             subtopic_vdb.add_texts(texts=chunk_texts, metadatas=chunk_metadatas, ids=chunk_ids)
-            print(f"📄 요약 결과 {len(chunk_texts)}개를 Summary_Analysis_DB에 저장했습니다.")
+            logger.info(f"📄 요약 결과 {len(chunk_texts)}개를 Summary_Analysis_DB에 저장했습니다.")
             return summary_chunks
         else:
-            print("⚠️ 요약 결과에서 유효한 청크를 찾지 못했습니다.")
+            logger.warning("⚠️ 요약 결과에서 유효한 청크를 찾지 못했습니다.")
 
 
 
@@ -405,7 +416,7 @@ class VectorDBManager:
         current_retriever_type = retriever_type
         if score_threshold is not None and retriever_type == "similarity":
             current_retriever_type = "similarity_score_threshold"
-            print(f"ℹ️ score_threshold provided. Changing retriever_type to 'similarity_score_threshold'.")
+            logger.info(f"ℹ️ score_threshold provided. Changing retriever_type to 'similarity_score_threshold'.")
 
         vdb = self.vectorstores[db_type]
         results = []
@@ -457,17 +468,17 @@ class VectorDBManager:
                 # SelfQueryRetriever는 k를 LLM이 추론하게 하므로, k가 무시될 수 있습니다.
                 # 만약 결과가 너무 많다면, k만큼 잘라냅니다.
                 if len(results) > k:
-                     print(f"ℹ️ SelfQuery found {len(results)} results. Truncating to k={k}.")
+                     logger.info(f"ℹ️ SelfQuery found {len(results)} results. Truncating to k={k}.")
                      results = results[:k]
 
             except Exception as e:
                 # SelfQuery 실패 시 similarity search로 폴백
                 error_msg = str(e)
-                print(f"⚠️ SelfQuery 실패 (폴백: similarity search): {error_msg}")
+                logger.warning(f"⚠️ SelfQuery 실패 (폴백: similarity search): {error_msg}")
 
                 # ChromaDB 호환되지 않는 필터 오류인 경우, similarity search로 대체
                 if "Expected where operand value" in error_msg or "type" in error_msg:
-                    print("   → ChromaDB 호환되지 않는 필터 형식 감지. similarity search로 전환합니다.")
+                    logger.warning("   → ChromaDB 호환되지 않는 필터 형식 감지. similarity search로 전환합니다.")
 
                 search_kwargs = {'k': k}
                 if filter_criteria:
@@ -479,7 +490,7 @@ class VectorDBManager:
                 )
                 results = retriever.invoke(query)
 
-        print(f"✅ Found {len(results)} documents from '{self.COLLECTION_NAMES[db_type]}' for query: '{query}'")
+        logger.info(f"✅ Found {len(results)} documents from '{self.COLLECTION_NAMES[db_type]}' for query: '{query}'")
         return results
 
     
@@ -505,7 +516,7 @@ class VectorDBManager:
             )
 
             if not results or not results.get('documents'):
-                print(f"⚠️ meeting_id '{meeting_id}'에 대한 청크를 찾을 수 없습니다.")
+                logger.warning(f"⚠️ meeting_id '{meeting_id}'에 대한 청크를 찾을 수 없습니다.")
                 return ""
 
             # documents와 metadatas를 chunk_index 순서로 정렬
@@ -524,11 +535,11 @@ class VectorDBManager:
             # 문서들을 순서대로 결합 (각 문서 사이에 줄바꿈 2개 추가)
             full_chunks = "\n\n".join([doc for _, doc in indexed_docs])
 
-            print(f"✅ meeting_id '{meeting_id}'에 대한 {len(indexed_docs)}개의 청크를 순서대로 가져왔습니다.")
+            logger.info(f"✅ meeting_id '{meeting_id}'에 대한 {len(indexed_docs)}개의 청크를 순서대로 가져왔습니다.")
             return full_chunks
 
         except Exception as e:
-            print(f"❌ 청크 조회 중 오류 발생: {e}")
+            logger.error(f"❌ 청크 조회 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
             return ""
@@ -555,7 +566,7 @@ class VectorDBManager:
             )
 
             if not results or not results.get('documents'):
-                print(f"⚠️ meeting_id '{meeting_id}'에 대한 문단 요약을 찾을 수 없습니다.")
+                logger.warning(f"⚠️ meeting_id '{meeting_id}'에 대한 문단 요약을 찾을 수 없습니다.")
                 return ""
 
             # documents와 metadatas를 summary_index 순서로 정렬
@@ -574,11 +585,11 @@ class VectorDBManager:
             # 문서들을 순서대로 결합 (각 문서 사이에 줄바꿈 2개 추가)
             full_summary = "\n\n".join([doc for _, doc in indexed_docs])
 
-            print(f"✅ meeting_id '{meeting_id}'에 대한 {len(indexed_docs)}개의 문단 요약을 순서대로 가져왔습니다.")
+            logger.info(f"✅ meeting_id '{meeting_id}'에 대한 {len(indexed_docs)}개의 문단 요약을 순서대로 가져왔습니다.")
             return full_summary
 
         except Exception as e:
-            print(f"❌ 문단 요약 조회 중 오류 발생: {e}")
+            logger.error(f"❌ 문단 요약 조회 중 오류 발생: {e}")
             import traceback
             traceback.print_exc()
             return ""
@@ -612,14 +623,14 @@ class VectorDBManager:
 
         if filters:
             # 특정 필터가 있는 경우
-            print(f"🗑️ Deleting from '{db_type}' collection with filters: {filters}")
+            logger.info(f"🗑️ Deleting from '{db_type}' collection with filters: {filters}")
             collection.delete(where=filters)
-            print(f"✅ Deletion from '{db_type}' collection complete.")
+            logger.info(f"✅ Deletion from '{db_type}' collection complete.")
         else:
             # 필터가 없는 경우, 전체 컬렉션 삭제
-            print(f"⚠️ No specific filters provided. Deleting ALL items from '{db_type}' collection.")
+            logger.warning(f"⚠️ No specific filters provided. Deleting ALL items from '{db_type}' collection.")
             collection.delete(where={}) # deletes all items
-            print(f"✅ All items deleted from '{db_type}' collection.")
+            logger.info(f"✅ All items deleted from '{db_type}' collection.")
 
     def _get_audio_file_from_vector_db(self, meeting_id):
         """
@@ -652,7 +663,7 @@ class VectorDBManager:
 
             return result[0] if result else None
         except Exception as e:
-            print(f"⚠️ Vector DB에서 audio_file 조회 실패: {e}")
+            logger.warning(f"⚠️ Vector DB에서 audio_file 조회 실패: {e}")
             return None
 
     def _delete_all_meeting_data(self, meeting_id):
@@ -673,33 +684,33 @@ class VectorDBManager:
             raise ValueError("DatabaseManager instance is required for deleting all meeting data. Please set db_manager in VectorDBManager constructor.")
 
         # 삭제 프로세스 시작 로그
-        print("\n\n" + "=" * 70)
-        print(f"🗑️  [회의 데이터 삭제 프로세스 시작]")
-        print("=" * 70)
-        print(f"🔑 삭제 키값(meeting_id): {meeting_id}")
-        print(f"📍 이 키값을 기준으로 다음 데이터를 검색하여 삭제합니다:")
-        print(f"   • SQLite DB - meeting_dialogues 테이블 (WHERE meeting_id = '{meeting_id}')")
-        print(f"   • SQLite DB - meeting_minutes 테이블 (WHERE meeting_id = '{meeting_id}')")
-        print(f"   • Vector DB - meeting_chunk 컬렉션 (WHERE meeting_id = '{meeting_id}')")
-        print(f"   • Vector DB - meeting_subtopic 컬렉션 (WHERE meeting_id = '{meeting_id}')")
-        print(f"   • 미디어 파일 (오디오/비디오, uploads 폴더)")
-        print("=" * 70)
+        logger.info("\n\n" + "=" * 70)
+        logger.info(f"🗑️  [회의 데이터 삭제 프로세스 시작]")
+        logger.info("=" * 70)
+        logger.info(f"🔑 삭제 키값(meeting_id): {meeting_id}")
+        logger.info(f"📍 이 키값을 기준으로 다음 데이터를 검색하여 삭제합니다:")
+        logger.info(f"   • SQLite DB - meeting_dialogues 테이블 (WHERE meeting_id = '{meeting_id}')")
+        logger.info(f"   • SQLite DB - meeting_minutes 테이블 (WHERE meeting_id = '{meeting_id}')")
+        logger.info(f"   • Vector DB - meeting_chunk 컬렉션 (WHERE meeting_id = '{meeting_id}')")
+        logger.info(f"   • Vector DB - meeting_subtopic 컬렉션 (WHERE meeting_id = '{meeting_id}')")
+        logger.info(f"   • 미디어 파일 (오디오/비디오, uploads 폴더)")
+        logger.info("=" * 70)
 
         # 1. meeting_id로 오디오 파일명 조회 (SQLite 우선, 실패 시 Vector DB)
         audio_file = self.db_manager.get_audio_file_by_meeting_id(meeting_id)
 
         if not audio_file:
-            print("⚠️ SQLite에서 audio_file을 찾을 수 없습니다. Vector DB에서 조회 시도...")
+            logger.warning("⚠️ SQLite에서 audio_file을 찾을 수 없습니다. Vector DB에서 조회 시도...")
             audio_file = self._get_audio_file_from_vector_db(meeting_id)
 
         if not audio_file:
-            print("⚠️ audio_file을 찾을 수 없습니다. 파일 삭제를 건너뜁니다.")
-            print("   (SQLite와 Vector DB 삭제는 계속 진행됩니다)")
+            logger.warning("⚠️ audio_file을 찾을 수 없습니다. 파일 삭제를 건너뜁니다.")
+            logger.warning("   (SQLite와 Vector DB 삭제는 계속 진행됩니다)")
             audio_file = None  # 파일 삭제 단계에서 처리
         else:
-            print(f"📄 미디어 파일명: {audio_file}")
+            logger.info(f"📄 미디어 파일명: {audio_file}")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
         # 2. SQLite DB 삭제
         deleted_sqlite = self.db_manager.delete_meeting_by_id(meeting_id)
@@ -709,8 +720,8 @@ class VectorDBManager:
         before_chunks_count = 0
         after_chunks_count = 0
         try:
-            print(f"\n📊 [Vector DB Chunks 삭제 검증 시작] meeting_id = {meeting_id}")
-            print("=" * 70)
+            logger.info(f"\n📊 [Vector DB Chunks 삭제 검증 시작] meeting_id = {meeting_id}")
+            logger.info("=" * 70)
 
             # LangChain vectorstore의 underlying collection 사용
             chunks_collection = self.vectorstores['chunks']._collection
@@ -719,33 +730,33 @@ class VectorDBManager:
             before_delete = chunks_collection.get(where={"meeting_id": meeting_id})
             if before_delete and before_delete.get('ids'):
                 before_chunks_count = len(before_delete['ids'])
-                print(f"[삭제 전] meeting_chunk: {before_chunks_count}개")
-                print("-" * 70)
+                logger.info(f"[삭제 전] meeting_chunk: {before_chunks_count}개")
+                logger.info("-" * 70)
 
                 # 삭제 실행
                 chunks_collection.delete(where={"meeting_id": meeting_id})
-                print(f"[삭제 수행] meeting_chunk: {before_chunks_count}개 삭제 시도")
+                logger.info(f"[삭제 수행] meeting_chunk: {before_chunks_count}개 삭제 시도")
                 deleted_chunks_count = before_chunks_count
 
-                print("-" * 70)
+                logger.info("-" * 70)
 
                 # 삭제 후 확인
                 after_delete = chunks_collection.get(where={"meeting_id": meeting_id})
                 if after_delete and after_delete.get('ids'):
                     after_chunks_count = len(after_delete['ids'])
-                    print(f"[삭제 후] meeting_chunk: {after_chunks_count}개 남음")
-                    print(f"⚠️ Vector DB (meeting_chunk) 삭제 검증 실패: {after_chunks_count}개 데이터가 남아있음")
+                    logger.info(f"[삭제 후] meeting_chunk: {after_chunks_count}개 남음")
+                    logger.warning(f"⚠️ Vector DB (meeting_chunk) 삭제 검증 실패: {after_chunks_count}개 데이터가 남아있음")
                 else:
-                    print(f"[삭제 후] meeting_chunk: 0개 남음")
-                    print(f"✅ Vector DB (meeting_chunk) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
+                    logger.info(f"[삭제 후] meeting_chunk: 0개 남음")
+                    logger.info(f"✅ Vector DB (meeting_chunk) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
             else:
-                print(f"[삭제 전] meeting_chunk: 0개")
-                print(f"ℹ️ Vector DB (meeting_chunk)에 meeting_id={meeting_id} 데이터 없음")
+                logger.info(f"[삭제 전] meeting_chunk: 0개")
+                logger.info(f"ℹ️ Vector DB (meeting_chunk)에 meeting_id={meeting_id} 데이터 없음")
 
-            print("=" * 70)
+            logger.info("=" * 70)
 
         except Exception as e:
-            print(f"❌ Vector DB (meeting_chunk) 삭제 중 오류: {e}")
+            logger.error(f"❌ Vector DB (meeting_chunk) 삭제 중 오류: {e}")
             import traceback
             traceback.print_exc()
 
@@ -754,8 +765,8 @@ class VectorDBManager:
         before_subtopic_count = 0
         after_subtopic_count = 0
         try:
-            print(f"\n📊 [Vector DB Subtopic 삭제 검증 시작] meeting_id = {meeting_id}")
-            print("=" * 70)
+            logger.info(f"\n📊 [Vector DB Subtopic 삭제 검증 시작] meeting_id = {meeting_id}")
+            logger.info("=" * 70)
 
             # LangChain vectorstore의 underlying collection 사용
             subtopic_collection = self.vectorstores['subtopic']._collection
@@ -764,39 +775,39 @@ class VectorDBManager:
             before_delete = subtopic_collection.get(where={"meeting_id": meeting_id})
             if before_delete and before_delete.get('ids'):
                 before_subtopic_count = len(before_delete['ids'])
-                print(f"[삭제 전] meeting_subtopic: {before_subtopic_count}개")
-                print("-" * 70)
+                logger.info(f"[삭제 전] meeting_subtopic: {before_subtopic_count}개")
+                logger.info("-" * 70)
 
                 # 삭제 실행
                 subtopic_collection.delete(where={"meeting_id": meeting_id})
-                print(f"[삭제 수행] meeting_subtopic: {before_subtopic_count}개 삭제 시도")
+                logger.info(f"[삭제 수행] meeting_subtopic: {before_subtopic_count}개 삭제 시도")
                 deleted_subtopic_count = before_subtopic_count
 
-                print("-" * 70)
+                logger.info("-" * 70)
 
                 # 삭제 후 확인
                 after_delete = subtopic_collection.get(where={"meeting_id": meeting_id})
                 if after_delete and after_delete.get('ids'):
                     after_subtopic_count = len(after_delete['ids'])
-                    print(f"[삭제 후] meeting_subtopic: {after_subtopic_count}개 남음")
-                    print(f"⚠️ Vector DB (meeting_subtopic) 삭제 검증 실패: {after_subtopic_count}개 데이터가 남아있음")
+                    logger.info(f"[삭제 후] meeting_subtopic: {after_subtopic_count}개 남음")
+                    logger.warning(f"⚠️ Vector DB (meeting_subtopic) 삭제 검증 실패: {after_subtopic_count}개 데이터가 남아있음")
                 else:
-                    print(f"[삭제 후] meeting_subtopic: 0개 남음")
-                    print(f"✅ Vector DB (meeting_subtopic) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
+                    logger.info(f"[삭제 후] meeting_subtopic: 0개 남음")
+                    logger.info(f"✅ Vector DB (meeting_subtopic) 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
             else:
-                print(f"[삭제 전] meeting_subtopic: 0개")
-                print(f"ℹ️ Vector DB (meeting_subtopic)에 meeting_id={meeting_id} 데이터 없음")
+                logger.info(f"[삭제 전] meeting_subtopic: 0개")
+                logger.info(f"ℹ️ Vector DB (meeting_subtopic)에 meeting_id={meeting_id} 데이터 없음")
 
-            print("=" * 70)
+            logger.info("=" * 70)
 
         except Exception as e:
-            print(f"❌ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
+            logger.error(f"❌ Vector DB (meeting_subtopic) 삭제 중 오류: {e}")
             import traceback
             traceback.print_exc()
 
         # 5. 미디어 파일 삭제 (오디오 또는 비디오)
-        print(f"\n📊 [미디어 파일 삭제 검증 시작] meeting_id = {meeting_id}")
-        print("=" * 70)
+        logger.info(f"\n📊 [미디어 파일 삭제 검증 시작] meeting_id = {meeting_id}")
+        logger.info("=" * 70)
 
         audio_deleted = False
 
@@ -804,42 +815,42 @@ class VectorDBManager:
             audio_path = os.path.join(self.upload_folder, audio_file)
 
             if os.path.exists(audio_path):
-                print(f"[삭제 전] 미디어 파일 존재: {audio_file}")
-                print(f"           경로: {audio_path}")
-                print("-" * 70)
+                logger.info(f"[삭제 전] 미디어 파일 존재: {audio_file}")
+                logger.info(f"           경로: {audio_path}")
+                logger.info("-" * 70)
 
                 os.remove(audio_path)
-                print(f"[삭제 수행] 미디어 파일 삭제 시도: {audio_file}")
+                logger.info(f"[삭제 수행] 미디어 파일 삭제 시도: {audio_file}")
 
-                print("-" * 70)
+                logger.info("-" * 70)
 
                 if not os.path.exists(audio_path):
-                    print(f"[삭제 후] 미디어 파일 없음")
-                    print(f"✅ 미디어 파일 삭제 검증 성공: 파일이 삭제되었습니다.")
+                    logger.info(f"[삭제 후] 미디어 파일 없음")
+                    logger.info(f"✅ 미디어 파일 삭제 검증 성공: 파일이 삭제되었습니다.")
                     audio_deleted = True
                 else:
-                    print(f"[삭제 후] 미디어 파일 여전히 존재")
-                    print(f"⚠️ 미디어 파일 삭제 검증 실패: 파일이 남아있습니다.")
+                    logger.info(f"[삭제 후] 미디어 파일 여전히 존재")
+                    logger.warning(f"⚠️ 미디어 파일 삭제 검증 실패: 파일이 남아있습니다.")
             else:
-                print(f"[삭제 전] 미디어 파일 없음: {audio_file}")
-                print(f"ℹ️ 미디어 파일이 존재하지 않습니다.")
+                logger.info(f"[삭제 전] 미디어 파일 없음: {audio_file}")
+                logger.info(f"ℹ️ 미디어 파일이 존재하지 않습니다.")
         else:
-            print(f"[건너뜀] audio_file 정보 없음")
-            print(f"ℹ️ audio_file을 찾을 수 없어 파일 삭제를 건너뜁니다.")
+            logger.info(f"[건너뜀] audio_file 정보 없음")
+            logger.info(f"ℹ️ audio_file을 찾을 수 없어 파일 삭제를 건너뜁니다.")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
         # 최종 요약
-        print(f"\n{'=' * 70}")
-        print(f"🎉 [삭제 작업 최종 요약] meeting_id = {meeting_id}")
-        print("=" * 70)
-        print(f"✓ SQLite meeting_dialogues: {deleted_sqlite['dialogues']}개 삭제")
-        print(f"✓ SQLite meeting_minutes: {deleted_sqlite['minutes']}개 삭제")
-        print(f"✓ SQLite meeting_shares: {deleted_sqlite.get('shares', 0)}개 삭제")
-        print(f"✓ Vector DB meeting_chunk: {deleted_chunks_count}개 삭제")
-        print(f"✓ Vector DB meeting_subtopic: {deleted_subtopic_count}개 삭제")
-        print(f"✓ 미디어 파일 (오디오/비디오): {'삭제됨' if audio_deleted else '없음/실패'}")
-        print("=" * 70 + "\n")
+        logger.info(f"\n{'=' * 70}")
+        logger.info(f"🎉 [삭제 작업 최종 요약] meeting_id = {meeting_id}")
+        logger.info("=" * 70)
+        logger.info(f"✓ SQLite meeting_dialogues: {deleted_sqlite['dialogues']}개 삭제")
+        logger.info(f"✓ SQLite meeting_minutes: {deleted_sqlite['minutes']}개 삭제")
+        logger.info(f"✓ SQLite meeting_shares: {deleted_sqlite.get('shares', 0)}개 삭제")
+        logger.info(f"✓ Vector DB meeting_chunk: {deleted_chunks_count}개 삭제")
+        logger.info(f"✓ Vector DB meeting_subtopic: {deleted_subtopic_count}개 삭제")
+        logger.info(f"✓ 미디어 파일 (오디오/비디오): {'삭제됨' if audio_deleted else '없음/실패'}")
+        logger.info("=" * 70 + "\n")
 
         return {
             "success": True,
@@ -866,15 +877,15 @@ class VectorDBManager:
         Returns:
             dict: 업데이트 결과 {'success': bool, 'updated_chunks': int, 'updated_subtopics': int}
         """
-        print(f"\n📊 [ChromaDB 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
-        print("=" * 70)
+        logger.info(f"\n📊 [ChromaDB 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
+        logger.info("=" * 70)
 
         updated_chunks = 0
         updated_subtopics = 0
 
         try:
             # 1. meeting_chunk 컬렉션 업데이트
-            print(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
+            logger.info(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
 
             # ChromaDB 네이티브 컬렉션 가져오기
             chunk_collection = self.client.get_collection(name=self.COLLECTION_NAMES['chunks'])
@@ -900,12 +911,12 @@ class VectorDBManager:
                     metadatas=updated_metadatas
                 )
                 updated_chunks = len(chunk_ids)
-                print(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 title 업데이트 완료")
+                logger.info(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 title 업데이트 완료")
             else:
-                print(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
+                logger.info(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
 
             # 2. meeting_subtopic 컬렉션 업데이트
-            print(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
+            logger.info(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
 
             # ChromaDB 네이티브 컬렉션 가져오기
             subtopic_collection = self.client.get_collection(name=self.COLLECTION_NAMES['subtopic'])
@@ -931,15 +942,15 @@ class VectorDBManager:
                     metadatas=updated_metadatas
                 )
                 updated_subtopics = len(subtopic_ids)
-                print(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_title 업데이트 완료")
+                logger.info(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_title 업데이트 완료")
             else:
-                print(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
+                logger.info(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
 
-            print("-" * 70)
-            print(f"✅ ChromaDB 메타데이터 업데이트 완료")
-            print(f"   • meeting_chunk: {updated_chunks}개")
-            print(f"   • meeting_subtopic: {updated_subtopics}개")
-            print("=" * 70 + "\n")
+            logger.info("-" * 70)
+            logger.info(f"✅ ChromaDB 메타데이터 업데이트 완료")
+            logger.info(f"   • meeting_chunk: {updated_chunks}개")
+            logger.info(f"   • meeting_subtopic: {updated_subtopics}개")
+            logger.info("=" * 70 + "\n")
 
             return {
                 'success': True,
@@ -948,8 +959,8 @@ class VectorDBManager:
             }
 
         except Exception as e:
-            print(f"❌ ChromaDB 메타데이터 업데이트 실패: {e}")
-            print("=" * 70 + "\n")
+            logger.error(f"❌ ChromaDB 메타데이터 업데이트 실패: {e}")
+            logger.info("=" * 70 + "\n")
             return {
                 'success': False,
                 'error': str(e),
@@ -969,15 +980,15 @@ class VectorDBManager:
         Returns:
             dict: 업데이트 결과 {'success': bool, 'updated_chunks': int, 'updated_subtopics': int}
         """
-        print(f"\n📊 [ChromaDB 날짜 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
-        print("=" * 70)
+        logger.info(f"\n📊 [ChromaDB 날짜 메타데이터 업데이트 시작] meeting_id = {meeting_id}")
+        logger.info("=" * 70)
 
         updated_chunks = 0
         updated_subtopics = 0
 
         try:
             # 1. meeting_chunk 컬렉션 업데이트
-            print(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
+            logger.info(f"[1/2] meeting_chunk 컬렉션 업데이트 중...")
 
             # ChromaDB 네이티브 컬렉션 가져오기
             chunk_collection = self.client.get_collection(name=self.COLLECTION_NAMES['chunks'])
@@ -1003,12 +1014,12 @@ class VectorDBManager:
                     metadatas=updated_metadatas
                 )
                 updated_chunks = len(chunk_ids)
-                print(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 meeting_date 업데이트 완료")
+                logger.info(f"   ✅ meeting_chunk: {updated_chunks}개 문서의 meeting_date 업데이트 완료")
             else:
-                print(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
+                logger.info(f"   ℹ️ meeting_chunk: 업데이트할 문서 없음")
 
             # 2. meeting_subtopic 컬렉션 업데이트
-            print(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
+            logger.info(f"[2/2] meeting_subtopic 컬렉션 업데이트 중...")
 
             # ChromaDB 네이티브 컬렉션 가져오기
             subtopic_collection = self.client.get_collection(name=self.COLLECTION_NAMES['subtopic'])
@@ -1034,15 +1045,15 @@ class VectorDBManager:
                     metadatas=updated_metadatas
                 )
                 updated_subtopics = len(subtopic_ids)
-                print(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_date 업데이트 완료")
+                logger.info(f"   ✅ meeting_subtopic: {updated_subtopics}개 문서의 meeting_date 업데이트 완료")
             else:
-                print(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
+                logger.info(f"   ℹ️ meeting_subtopic: 업데이트할 문서 없음")
 
-            print("-" * 70)
-            print(f"✅ ChromaDB 날짜 메타데이터 업데이트 완료")
-            print(f"   • meeting_chunk: {updated_chunks}개")
-            print(f"   • meeting_subtopic: {updated_subtopics}개")
-            print("=" * 70 + "\n")
+            logger.info("-" * 70)
+            logger.info(f"✅ ChromaDB 날짜 메타데이터 업데이트 완료")
+            logger.info(f"   • meeting_chunk: {updated_chunks}개")
+            logger.info(f"   • meeting_subtopic: {updated_subtopics}개")
+            logger.info("=" * 70 + "\n")
 
             return {
                 'success': True,
@@ -1051,8 +1062,8 @@ class VectorDBManager:
             }
 
         except Exception as e:
-            print(f"❌ ChromaDB 날짜 메타데이터 업데이트 실패: {e}")
-            print("=" * 70 + "\n")
+            logger.error(f"❌ ChromaDB 날짜 메타데이터 업데이트 실패: {e}")
+            logger.info("=" * 70 + "\n")
             return {
                 'success': False,
                 'error': str(e),

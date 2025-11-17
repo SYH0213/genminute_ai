@@ -2,10 +2,32 @@
 import sqlite3
 import uuid
 import datetime
+import logging
+
+logger = logging.getLogger(__name__)
+
 
 class DatabaseManager:
-    def __init__(self, db_path):
+    """SQLite 데이터베이스 관리 (Singleton 패턴)"""
+    _instance = None
+    _initialized = False
+
+    def __new__(cls, db_path=None):
+        if cls._instance is None:
+            cls._instance = super(DatabaseManager, cls).__new__(cls)
+        return cls._instance
+
+    def __init__(self, db_path=None):
+        # 이미 초기화된 경우 건너뛰기 (Singleton)
+        if self._initialized:
+            return
+
+        if db_path is None:
+            raise ValueError("DatabaseManager 최초 생성 시 db_path가 필요합니다.")
+
         self.db_path = db_path
+        self._initialized = True
+        logger.info(f"✅ DatabaseManager 초기화: {db_path}")
 
     def _get_connection(self):
         conn = sqlite3.connect(self.db_path)
@@ -46,7 +68,7 @@ class DatabaseManager:
             ))
         conn.commit()
         conn.close()
-        print(f"✅ DB 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}, meeting_date={meeting_date}")
+        logger.info(f"✅ DB 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}, meeting_date={meeting_date}")
         return meeting_id
 
     def get_meeting_by_id(self, meeting_id):
@@ -122,14 +144,14 @@ class DatabaseManager:
                 SET title = ?, meeting_date = ?, minutes_content = ?, updated_at = ?, owner_id = ?
                 WHERE meeting_id = ?
             """, (title, meeting_date, minutes_content, created_at, owner_id, meeting_id))
-            print(f"✅ 회의록 업데이트 완료: meeting_id={meeting_id}, owner_id={owner_id}")
+            logger.info(f"✅ 회의록 업데이트 완료: meeting_id={meeting_id}, owner_id={owner_id}")
         else:
             # 새 회의록 저장
             cursor.execute("""
                 INSERT INTO meeting_minutes (meeting_id, title, meeting_date, minutes_content, created_at, updated_at, owner_id)
                 VALUES (?, ?, ?, ?, ?, ?, ?)
             """, (meeting_id, title, meeting_date, minutes_content, created_at, created_at, owner_id))
-            print(f"✅ 회의록 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}")
+            logger.info(f"✅ 회의록 저장 완료: meeting_id={meeting_id}, owner_id={owner_id}")
 
         conn.commit()
         conn.close()
@@ -198,7 +220,7 @@ class DatabaseManager:
         conn.commit()
         conn.close()
 
-        print(f"✅ DB 삭제 완료: {deleted_rows}개 행 삭제됨")
+        logger.info(f"✅ DB 삭제 완료: {deleted_rows}개 행 삭제됨")
         return deleted_rows
 
     def delete_meeting_by_id(self, meeting_id):
@@ -217,13 +239,13 @@ class DatabaseManager:
         conn = self._get_connection()
         cursor = conn.cursor()
 
-        print(f"\n📊 [SQLite DB 삭제 검증 시작] meeting_id = {meeting_id}")
-        print("=" * 70)
+        logger.info(f"\n📊 [SQLite DB 삭제 검증 시작] meeting_id = {meeting_id}")
+        logger.info("=" * 70)
 
         # 1. meeting_dialogues 삭제 전 개수 확인
         cursor.execute("SELECT COUNT(*) as count FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
         before_dialogues = cursor.fetchone()['count']
-        print(f"[삭제 전] meeting_dialogues: {before_dialogues}개")
+        logger.info(f"[삭제 전] meeting_dialogues: {before_dialogues}개")
 
         # 2. meeting_minutes 삭제 전 개수 확인
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
@@ -231,9 +253,9 @@ class DatabaseManager:
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_minutes WHERE meeting_id = ?", (meeting_id,))
             before_minutes = cursor.fetchone()['count']
-            print(f"[삭제 전] meeting_minutes: {before_minutes}개")
+            logger.info(f"[삭제 전] meeting_minutes: {before_minutes}개")
         else:
-            print(f"[삭제 전] meeting_minutes: 테이블 없음")
+            logger.info(f"[삭제 전] meeting_minutes: 테이블 없음")
 
         # 3. meeting_shares 삭제 전 개수 확인
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_shares'")
@@ -241,9 +263,9 @@ class DatabaseManager:
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_shares WHERE meeting_id = ?", (meeting_id,))
             before_shares = cursor.fetchone()['count']
-            print(f"[삭제 전] meeting_shares: {before_shares}개")
+            logger.info(f"[삭제 전] meeting_shares: {before_shares}개")
         else:
-            print(f"[삭제 전] meeting_shares: 테이블 없음")
+            logger.info(f"[삭제 전] meeting_shares: 테이블 없음")
 
         # 4. meeting_mindmap 삭제 전 개수 확인
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
@@ -251,11 +273,11 @@ class DatabaseManager:
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
             before_mindmap = cursor.fetchone()['count']
-            print(f"[삭제 전] meeting_mindmap: {before_mindmap}개")
+            logger.info(f"[삭제 전] meeting_mindmap: {before_mindmap}개")
         else:
-            print(f"[삭제 전] meeting_mindmap: 테이블 없음")
+            logger.info(f"[삭제 전] meeting_mindmap: 테이블 없음")
 
-        print("-" * 70)
+        logger.info("-" * 70)
 
         # 4. meeting_dialogues에서 삭제 수행
         cursor.execute("DELETE FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
@@ -284,48 +306,48 @@ class DatabaseManager:
 
         conn.commit()
 
-        print(f"[삭제 수행] meeting_dialogues: {deleted_dialogues}개 삭제")
-        print(f"[삭제 수행] meeting_minutes: {deleted_minutes}개 삭제")
-        print(f"[삭제 수행] meeting_shares: {deleted_shares}개 삭제")
-        print(f"[삭제 수행] meeting_mindmap: {deleted_mindmap}개 삭제")
+        logger.info(f"[삭제 수행] meeting_dialogues: {deleted_dialogues}개 삭제")
+        logger.info(f"[삭제 수행] meeting_minutes: {deleted_minutes}개 삭제")
+        logger.info(f"[삭제 수행] meeting_shares: {deleted_shares}개 삭제")
+        logger.info(f"[삭제 수행] meeting_mindmap: {deleted_mindmap}개 삭제")
 
-        print("-" * 70)
+        logger.info("-" * 70)
 
         # 7. 삭제 후 검증
         cursor.execute("SELECT COUNT(*) as count FROM meeting_dialogues WHERE meeting_id = ?", (meeting_id,))
         after_dialogues = cursor.fetchone()['count']
-        print(f"[삭제 후] meeting_dialogues: {after_dialogues}개 남음")
+        logger.info(f"[삭제 후] meeting_dialogues: {after_dialogues}개 남음")
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_minutes'")
         after_minutes = 0
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_minutes WHERE meeting_id = ?", (meeting_id,))
             after_minutes = cursor.fetchone()['count']
-            print(f"[삭제 후] meeting_minutes: {after_minutes}개 남음")
+            logger.info(f"[삭제 후] meeting_minutes: {after_minutes}개 남음")
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_shares'")
         after_shares = 0
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_shares WHERE meeting_id = ?", (meeting_id,))
             after_shares = cursor.fetchone()['count']
-            print(f"[삭제 후] meeting_shares: {after_shares}개 남음")
+            logger.info(f"[삭제 후] meeting_shares: {after_shares}개 남음")
 
         cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='meeting_mindmap'")
         after_mindmap = 0
         if cursor.fetchone():
             cursor.execute("SELECT COUNT(*) as count FROM meeting_mindmap WHERE meeting_id = ?", (meeting_id,))
             after_mindmap = cursor.fetchone()['count']
-            print(f"[삭제 후] meeting_mindmap: {after_mindmap}개 남음")
+            logger.info(f"[삭제 후] meeting_mindmap: {after_mindmap}개 남음")
 
         conn.close()
 
         # 검증 결과
         if after_dialogues == 0 and after_minutes == 0 and after_shares == 0 and after_mindmap == 0:
-            print(f"✅ SQLite DB 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
+            logger.info(f"✅ SQLite DB 삭제 검증 성공: 모든 데이터가 삭제되었습니다.")
         else:
-            print(f"⚠️ SQLite DB 삭제 검증 실패: 일부 데이터가 남아있습니다!")
+            logger.warning(f"⚠️ SQLite DB 삭제 검증 실패: 일부 데이터가 남아있습니다!")
 
-        print("=" * 70)
+        logger.info("=" * 70)
 
         return {
             "dialogues": deleted_dialogues,
@@ -378,7 +400,7 @@ class DatabaseManager:
 
         if not vector_result['success']:
             # ChromaDB 업데이트 실패 시 전체 실패 처리
-            print(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
+            logger.warning(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
             return {
                 'success': False,
                 'error': f"ChromaDB 업데이트 실패: {vector_result.get('error', '알 수 없는 오류')}",
@@ -414,7 +436,7 @@ class DatabaseManager:
 
             conn.commit()
 
-            print(f"✅ SQLite 제목 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
+            logger.info(f"✅ SQLite 제목 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
 
             return {
                 'success': True,
@@ -425,8 +447,8 @@ class DatabaseManager:
 
         except Exception as e:
             conn.rollback()
-            print(f"❌ SQLite 제목 업데이트 실패: {e}")
-            print(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
+            logger.error(f"❌ SQLite 제목 업데이트 실패: {e}")
+            logger.warning(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
             return {
                 'success': False,
                 'error': str(e),
@@ -460,7 +482,7 @@ class DatabaseManager:
 
         if not vector_result['success']:
             # ChromaDB 업데이트 실패 시 전체 실패 처리
-            print(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
+            logger.warning(f"⚠️ ChromaDB 업데이트 실패로 인해 SQLite 업데이트를 건너뜁니다.")
             return {
                 'success': False,
                 'error': f"ChromaDB 업데이트 실패: {vector_result.get('error', '알 수 없는 오류')}",
@@ -496,7 +518,7 @@ class DatabaseManager:
 
             conn.commit()
 
-            print(f"✅ SQLite 날짜 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
+            logger.info(f"✅ SQLite 날짜 업데이트 완료: meeting_id={meeting_id}, dialogues={updated_dialogues}개, minutes={updated_minutes}개")
 
             return {
                 'success': True,
@@ -507,8 +529,8 @@ class DatabaseManager:
 
         except Exception as e:
             conn.rollback()
-            print(f"❌ SQLite 날짜 업데이트 실패: {e}")
-            print(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
+            logger.error(f"❌ SQLite 날짜 업데이트 실패: {e}")
+            logger.warning(f"⚠️ ChromaDB는 이미 업데이트되었습니다. 데이터 불일치 발생!")
             return {
                 'success': False,
                 'error': str(e),
@@ -556,14 +578,14 @@ class DatabaseManager:
                 SET mindmap_content = ?, created_at = ?
                 WHERE meeting_id = ?
             """, (mindmap_content, created_at, meeting_id))
-            print(f"✅ 마인드맵 업데이트 완료: meeting_id={meeting_id}")
+            logger.info(f"✅ 마인드맵 업데이트 완료: meeting_id={meeting_id}")
         else:
             # 새 마인드맵 저장
             cursor.execute("""
                 INSERT INTO meeting_mindmap (meeting_id, mindmap_content, created_at)
                 VALUES (?, ?, ?)
             """, (meeting_id, mindmap_content, created_at))
-            print(f"✅ 마인드맵 저장 완료: meeting_id={meeting_id}")
+            logger.info(f"✅ 마인드맵 저장 완료: meeting_id={meeting_id}")
 
         conn.commit()
         conn.close()
